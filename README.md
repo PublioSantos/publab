@@ -41,6 +41,27 @@ because 270 does not fit in an 8-bit register. That one difference *is* the
 lesson, and the laboratory lets you watch it happen rather than take it on
 faith.
 
+## Why this matters
+
+**It opens hardware's "black box."** Most developers entering the field
+today start out working with high-level abstractions — Python, JavaScript,
+frameworks, the cloud. That produces great programmers, but it leaves a gap
+when it comes to understanding what the processor actually does with the
+code. PubLab makes the physics of software visible: registers, the bus,
+flags, bit overflow, the stack pointer. It runs entirely in the browser, on
+any operating system, with nothing to install and a modern UI — the barrier
+to entry is immediate, and what it teaches is root cause, not trivia.
+Watching `250 + 20` really produce `14` at 8 bits and `270` at 16 bits is
+what makes classic production bugs — integer overflow, stack leaks, memory-
+precision issues — click once and for all, instead of staying a rule to
+memorize.
+
+**It connects theory, history and the industry.** Bringing a parameterized
+educational VM, the historical 8051 (8-bit CISC) and the modern Cortex-M3
+(32-bit ARM) into the same environment gives students and senior engineers
+alike a panoramic view of how computer architecture evolved into the chips
+that drive the industry today — IoT, automation, embedded systems.
+
 ```
 PubLab
 ├── PubASM        the educational assembly language

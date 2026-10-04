@@ -41,6 +41,27 @@ agora é `270` — mesma fonte, mesmas instruções, resposta diferente, porque
 laboratório deixa você assistir ela acontecer em vez de só confiar na
 palavra de alguém.
 
+## Por que isso importa
+
+**Abre a "caixa-preta" do hardware.** A maioria dos desenvolvedores atuais
+entra no mercado trabalhando com abstrações de alto nível (Python,
+JavaScript, frameworks, nuvem). Isso gera ótimos programadores, mas cria
+uma lacuna quando o assunto é entender o que o processador realmente faz
+com o código. O PubLab torna visível a física do software: registradores,
+barramento, flags, estouro de bits e ponteiro de pilha. O PubLab roda 100%
+no navegador, em qualquer sistema operacional, sem instalação e com uma UI
+moderna. A curva de acesso é imediata. Ensina a causa raiz do comportamento
+do software. Por exemplo: ao demonstrar na prática por que `250 + 20`
+resulta em `14` em 8 bits e `270` em 16 bits, o desenvolvedor entende de
+forma definitiva o motivo de bugs clássicos de produção, como integer
+overflow, vazamentos de pilha e problemas de precisão de memória.
+
+**Conecta teoria, história e mercado.** Integrar no mesmo ambiente uma VM
+educacional parametrizada, o histórico 8051 (CISC 8-bit) e o moderno
+Cortex-M3 (ARM 32-bit) dá ao estudante e ao profissional sênior uma visão
+panorâmica de como a arquitetura de computadores evoluiu até os chips que
+movem a indústria hoje (IoT, automação e sistemas embarcados).
+
 ```
 PubLab
 ├── PubASM        a linguagem assembly educacional
