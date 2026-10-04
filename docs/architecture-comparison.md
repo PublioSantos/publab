@@ -40,12 +40,18 @@ run side by side, so the differences documented in `docs/8051.md` and
 
 ## Stage A — 8051 and Cortex-M3 get a UI tab each — done
 
-Kof's UI runtime has no tab or visibility widget (`docs/architecture.md` lists
-the toolkit's real constraints), so "tab" here means a self-contained
-section, not a dynamically shown/hidden pane: all three laboratories —
-PubVM, 8051, Cortex-M3 — sit one below another in the same window, each with
-its own editor, controls, registers, flags, output, diagnostics and
-explanation. `publab/ui/Lab8051.kf` and `publab/ui/LabM3.kf` are the
+Kof's UI runtime has no dedicated tab widget, and the window itself does
+not scroll (it renders as a fixed-size app chrome, not a scrollable page —
+`docs/architecture.md` lists the toolkit's real constraints), so a page of
+sections stacked one below another is not reachable at all. Real switching
+is built from a generic primitive the toolkit does have: `setStyle` on any
+widget, which `Main.kf`'s `refreshTabVisibility()` uses to set
+`display: none` on every section but the active one. Four buttons — PubVM,
+8051 LABORATORY, CORTEX-M3 LABORATORY, ARCHITECTURE COMPARISON — sit above
+the machine/example/language selectors and switch `Ui.activeTab`. Each
+laboratory keeps its own editor, controls, registers, flags, output,
+diagnostics and explanation. `publab/ui/Lab8051.kf` and `publab/ui/LabM3.kf`
+are the
 controllers (mirroring `Lab.kf`'s shape); `Presenter8051.kf`/`PresenterM3.kf`
 render their state; `Explain8051.kf`/`ExplainM3.kf` give each one a
 generic "what changed" explanation (registers and flags that differed

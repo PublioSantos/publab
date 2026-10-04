@@ -19,6 +19,19 @@ import publab.ui
 // handles live in static fields — the snapshot of a handle still points at
 // the real widget.
 class Ui {
+    // Which laboratory is on screen. Kof's UI runtime has no tab/visibility
+    // widget (docs/architecture.md) and the window itself does not scroll
+    // (it renders as a fixed-size app chrome, not a scrollable page), so a
+    // long stacked page is not reachable at all — real tab switching, done
+    // through setStyle("display: none"/"") on each section's own shell, is
+    // the only way to reach the 8051/Cortex-M3/comparison sections.
+    static String activeTab = "pubvm"
+    static View pubvmShell = View(Style(""))
+    static Button navPubvmButton = Button("", () -> {})
+    static Button nav8051Button = Button("", () -> {})
+    static Button navM3Button = Button("", () -> {})
+    static Button navCompareButton = Button("", () -> {})
+
     static Window window = Window("PubLab")
     static Textarea editor = Textarea("")
     static Select machines = Select(listOf("PubVM-8"))
@@ -148,6 +161,10 @@ class Ui {
     static Label compareM3Status = Label("")
     static Label compareM3Output = Label("")
     static Label compareM3Explain = Label("")
+
+    static View lab8051Shell = View(Style(""))
+    static View labM3Shell = View(Style(""))
+    static View compareShell = View(Style(""))
 }
 
 Color textColor() { return Color(230, 230, 242) }
@@ -398,6 +415,54 @@ void onCompareStep() {
     refreshCompare()
 }
 
+// --- tab switching ---
+//
+// setStyle(Style(css)) replaces a node's ENTIRE inline style (it sets
+// style.cssText wholesale, not a merge — notes/kof-compiler-findings.md's
+// D-UI-STYLE discussion), so a hidden shell's style is the same panel CSS
+// plus "display: none" appended, not "display: none" alone, or the shell
+// would lose its background/padding/radius the moment it is shown again.
+Style rootStyleFor(Bool visible) {
+    if (visible) {
+        return Style("background: #12151F; color: #E6E6F2; padding: 16; border-radius: 8")
+    }
+    return Style("background: #12151F; color: #E6E6F2; padding: 16; border-radius: 8; display: none")
+}
+
+void refreshTabVisibility() {
+    Ui.pubvmShell.setStyle(rootStyleFor(Ui.activeTab == "pubvm"))
+    Ui.lab8051Shell.setStyle(rootStyleFor(Ui.activeTab == "8051"))
+    Ui.labM3Shell.setStyle(rootStyleFor(Ui.activeTab == "m3"))
+    Ui.compareShell.setStyle(rootStyleFor(Ui.activeTab == "compare"))
+}
+
+void onNavPubvm() {
+    Ui.activeTab = "pubvm"
+    refreshTabVisibility()
+}
+
+void onNav8051() {
+    Ui.activeTab = "8051"
+    refreshTabVisibility()
+}
+
+void onNavM3() {
+    Ui.activeTab = "m3"
+    refreshTabVisibility()
+}
+
+void onNavCompare() {
+    Ui.activeTab = "compare"
+    refreshTabVisibility()
+}
+
+void relabelNav(String language) {
+    Ui.navPubvmButton.text = "PubVM"
+    Ui.nav8051Button.text = lab8051Title(language)
+    Ui.navM3Button.text = labM3Title(language)
+    Ui.navCompareButton.text = compareTitle(language)
+}
+
 // The labels that are not machine state: panel titles and control captions.
 // Re-applied when the language changes.
 void relabel() {
@@ -421,6 +486,7 @@ void relabel() {
     Ui.stackTitle.text = stackTitle(language)
     Ui.stackNote.text = stackNote(language)
     Ui.explainTitle.text = explainTitle(language)
+    relabelNav(language)
 }
 
 // --- control handlers ---
@@ -698,8 +764,8 @@ main() {
         Ui.status8051, Ui.current8051,
         Row(listOf(registers8051Panel, flags8051Panel)),
         explain8051Panel, output8051Panel, diagnostics8051Panel))
-    var lab8051Shell = View(root)
-    lab8051Shell.bind(lab8051Body)
+    Ui.lab8051Shell = View(root)
+    Ui.lab8051Shell.bind(lab8051Body)
 
     // --- phase 11 stage A: the Cortex-M3 laboratory ---
     Ui.labM3Title = Label("")
@@ -760,8 +826,8 @@ main() {
         Ui.statusM3, Ui.currentM3,
         Row(listOf(registersM3Panel, flagsM3Panel)),
         explainM3Panel, outputM3Panel, diagnosticsM3Panel))
-    var labM3Shell = View(root)
-    labM3Shell.bind(labM3Body)
+    Ui.labM3Shell = View(root)
+    Ui.labM3Shell.bind(labM3Body)
 
     // --- phase 11 stage B: the comparison view ---
     Ui.compareTitle = Label("")
@@ -826,18 +892,33 @@ main() {
         Row(listOf(Ui.compareSetLabel, Ui.compareSets)),
         Ui.compareDescription, compareControls, Ui.compareMessage,
         Row(listOf(comparePubvmPanel, compare8051Panel, compareM3Panel))))
-    var compareShell = View(root)
-    compareShell.bind(compareBody)
+    Ui.compareShell = View(root)
+    Ui.compareShell.bind(compareBody)
 
-    // --- compose ---
-    var body = Column(listOf(header, Hr(), selectors, Hr(),
+    // --- the PubVM laboratory's own shell ---
+    // Everything that used to sit directly in body now lives inside its own
+    // tab shell, the same way the 8051/Cortex-M3/comparison sections already
+    // do — see the "tab switching" note on Ui.activeTab above for why.
+    var pubvmBody = Column(listOf(
         Ui.sourceTitle, Ui.editor, controls, Ui.message, Hr(),
         Ui.machineSummary, Ui.status, Ui.current, Ui.sourceLine, Hr(),
         Row(listOf(registersPanel, flagsPanel)),
         explainPanel, changesPanel, memoryPanel, stackPanel,
-        outputPanel, diagnosticsPanel,
-        Hr(), lab8051Shell, Hr(), labM3Shell,
-        Hr(), compareShell,
+        outputPanel, diagnosticsPanel))
+    Ui.pubvmShell = View(root)
+    Ui.pubvmShell.bind(pubvmBody)
+
+    // --- tab navigation ---
+    Ui.navPubvmButton = Button("", () -> onNavPubvm())
+    Ui.nav8051Button = Button("", () -> onNav8051())
+    Ui.navM3Button = Button("", () -> onNavM3())
+    Ui.navCompareButton = Button("", () -> onNavCompare())
+    var nav = Row(listOf(Ui.navPubvmButton, Ui.nav8051Button,
+        Ui.navM3Button, Ui.navCompareButton))
+
+    // --- compose ---
+    var body = Column(listOf(header, Hr(), selectors, Hr(), nav, Hr(),
+        Ui.pubvmShell, Ui.lab8051Shell, Ui.labM3Shell, Ui.compareShell,
         Hr(), poweredBy))
     var shell = View(root)
     shell.bind(body)
@@ -852,5 +933,6 @@ main() {
     relabelCompare()
     refreshCompare()
     refreshM3()
+    refreshTabVisibility()
     Ui.window.show()
 }

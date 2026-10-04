@@ -41,12 +41,18 @@ estudante vê acontecer.
 
 ## Etapa A — 8051 e Cortex-M3 ganham uma aba cada — concluída
 
-O runtime de UI do Kof não tem um widget de aba ou de visibilidade
-(`docs/architecture.md` lista as restrições reais do toolkit), então "aba"
-aqui significa uma seção autocontida, não um painel dinamicamente
-mostrado/escondido: os três laboratórios — PubVM, 8051, Cortex-M3 — ficam
-um abaixo do outro na mesma janela, cada um com seu próprio editor,
-controles, registradores, flags, saída, diagnósticos e explicação.
+O runtime de UI do Kof não tem um widget de aba dedicado, e a própria
+janela não rola (ela é renderizada como um chrome de app de tamanho fixo,
+não uma página rolável — `docs/architecture.md` lista as restrições reais
+do toolkit), então uma página de seções empilhadas uma abaixo da outra não
+é alcançável de jeito nenhum. A troca real é construída a partir de um
+primitivo genérico que o toolkit de fato tem: `setStyle` em qualquer
+widget, que o `refreshTabVisibility()` do `Main.kf` usa para aplicar
+`display: none` em toda seção menos a ativa. Quatro botões — PubVM,
+LABORATÓRIO 8051, LABORATÓRIO CORTEX-M3, COMPARAÇÃO ENTRE ARQUITETURAS —
+ficam acima dos seletores de máquina/exemplo/idioma e trocam o
+`Ui.activeTab`. Cada laboratório mantém seu próprio editor, controles,
+registradores, flags, saída, diagnósticos e explicação.
 `publab/ui/Lab8051.kf` e `publab/ui/LabM3.kf` são os controladores
 (espelhando a forma do `Lab.kf`); `Presenter8051.kf`/`PresenterM3.kf`
 renderizam seus estados; `Explain8051.kf`/`ExplainM3.kf` dão a cada um uma
