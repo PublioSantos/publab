@@ -1,0 +1,107 @@
+package publab.ui
+
+import publab.machine
+import publab.i8051
+
+// Phase 11 stage A — the 8051 tab's controller, mirroring Lab.kf's shape for
+// PubVM. Its own self-contained state: the 8051 toolchain stays independent
+// of PubVM's and the Cortex-M3's, the same way the engines themselves do
+// (docs/architecture-comparison.md).
+
+class Lab8051State {
+    static Machine8051 machine = Machine8051()
+    static String diagnostics = ""
+    static String message = ""
+    static Bool assembled = false
+    static Int imageBytes = 0
+    static MachineState8051 previous = Machine8051().snapshot()
+}
+
+String lab8051DefaultSource() {
+    return "MOV A, #3\n"
+        + "loop:\n"
+        + "PRINT A\n"
+        + "DEC A\n"
+        + "JNZ loop\n"
+        + "PRINT A\n"
+        + "HALT\n"
+}
+
+MachineState8051 lab8051State() {
+    return Lab8051State.machine.snapshot()
+}
+
+MachineState8051 lab8051Previous() {
+    return Lab8051State.previous
+}
+
+String lab8051Diagnostics() {
+    return Lab8051State.diagnostics
+}
+
+String lab8051Message() {
+    return Lab8051State.message
+}
+
+Bool lab8051Assembled() {
+    return Lab8051State.assembled
+}
+
+void lab8051Remember() {
+    Lab8051State.previous = Lab8051State.machine.snapshot()
+}
+
+String lab8051Explanation(String language) {
+    if (!Lab8051State.assembled) { return noExplainYet8051(language) }
+    return instructionExplanation8051(Lab8051State.previous, Lab8051State.machine.snapshot(), language)
+}
+
+Bool lab8051Assemble(String source, String language) {
+    val result = assembleSource8051(source)
+    Lab8051State.diagnostics = renderDiagnostics8051(result.diagnostics(), language)
+    Lab8051State.machine = Machine8051()
+    if (result.ok()) {
+        Lab8051State.machine.load(result.image())
+        Lab8051State.assembled = true
+        Lab8051State.imageBytes = result.byteCount()
+        Lab8051State.message = assembledMessage(result.byteCount(), language)
+    } else {
+        Lab8051State.assembled = false
+        Lab8051State.imageBytes = 0
+        Lab8051State.message = assemblyFailedMessage(language)
+    }
+    lab8051Remember()
+    return result.ok()
+}
+
+void lab8051Reset(String language) {
+    Lab8051State.machine.reset()
+    if (Lab8051State.assembled) {
+        Lab8051State.message = assembledMessage(Lab8051State.imageBytes, language)
+    } else {
+        Lab8051State.message = notAssembledMessage(language)
+    }
+    lab8051Remember()
+}
+
+Bool lab8051Step(String language) {
+    if (!Lab8051State.assembled) {
+        Lab8051State.message = notAssembledMessage(language)
+        return false
+    }
+    lab8051Remember()
+    val executed = Lab8051State.machine.step()
+    Lab8051State.message = stepMessage8051(Lab8051State.machine.snapshot(), language)
+    return executed
+}
+
+Int lab8051Run(String language) {
+    if (!Lab8051State.assembled) {
+        Lab8051State.message = notAssembledMessage(language)
+        return 0
+    }
+    lab8051Remember()
+    val cycles = Lab8051State.machine.run(labRunBudget())
+    Lab8051State.message = runMessage8051(Lab8051State.machine.snapshot(), language)
+    return cycles
+}

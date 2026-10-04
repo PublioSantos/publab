@@ -1,0 +1,66 @@
+package publab.ui
+
+import publab.cm3
+
+// Phase 11 stage A — a plain-language explanation of the last Cortex-M3
+// instruction, built from two real MachineStateM3 snapshots, the same
+// generic "what changed" shape as Explain8051.kf — see that file for why
+// this is deliberately simpler than phase 7's PubVM explanation.
+
+String noExplainYetM3(String language) {
+    return noExplainYet(language)
+}
+
+List<String> changedRegisterNamesM3(MachineStateM3 before, MachineStateM3 after) {
+    var names: List<String> = listOf()
+    var i = 0
+    while (i < before.registers().size && i < after.registers().size) {
+        if (before.registers().get(i) != after.registers().get(i)) { names.add("R" + i) }
+        i = i + 1
+    }
+    if (before.sp() != after.sp()) { names.add("SP") }
+    if (before.lr() != after.lr()) { names.add("LR") }
+    if (before.gpioa() != after.gpioa()) { names.add("GPIOA") }
+    return names
+}
+
+List<String> changedFlagNamesM3(MachineStateM3 before, MachineStateM3 after) {
+    var names: List<String> = listOf()
+    if (before.negative() != after.negative()) { names.add("N") }
+    if (before.zero() != after.zero()) { names.add("Z") }
+    if (before.carry() != after.carry()) { names.add("C") }
+    if (before.overflow() != after.overflow()) { names.add("V") }
+    return names
+}
+
+String instructionExplanationM3(MachineStateM3 before, MachineStateM3 after, String language) {
+    val instruction = before.currentInstruction()
+    val registers = changedRegisterNamesM3(before, after)
+    val flags = changedFlagNamesM3(before, after)
+
+    var changed = ""
+    var i = 0
+    while (i < registers.size) {
+        if (changed.length > 0) { changed = changed + ", " }
+        changed = changed + registers.get(i)
+        i = i + 1
+    }
+    if (flags.size > 0) {
+        if (changed.length > 0) { changed = changed + "; " }
+        var flagList = ""
+        i = 0
+        while (i < flags.size) {
+            if (flagList.length > 0) { flagList = flagList + ", " }
+            flagList = flagList + flags.get(i)
+            i = i + 1
+        }
+        changed = changed + "flags " + flagList
+    }
+
+    if (changed.length == 0) {
+        if (isPt(language)) { return instruction + " — nada mudou" }
+        return instruction + " — nothing changed"
+    }
+    if (isPt(language)) { return instruction + " — mudou: " + changed }
+    return instruction + " — changed: " + changed
+}

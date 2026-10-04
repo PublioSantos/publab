@@ -1,0 +1,70 @@
+package tests
+
+import publab.machine
+import publab.cm3
+import publab.ui
+
+// Phase 11 stage A — the Cortex-M3 tab's presenter and explanation, built
+// from real MachineStateM3 snapshots, the same rule tests/ui8051_test.kf
+// follows for the 8051.
+
+test "registerLinesM3 lists R0-R12, SP, LR and GPIOA, by real name" {
+    val assembled = assembleSourceM3("MOV R0, #10\nMOV GPIOA, #255\nHALT\n")
+    assert(assembled.ok(), renderDiagnosticsM3(assembled.diagnostics(), "en"))
+    var m = MachineM3()
+    m.load(assembled.image())
+    m.run(100)
+    val text = joinLines(registerLinesM3(m.snapshot()))
+    assert(text.contains("R0"), text)
+    assert(text.contains("SP"), text)
+    assert(text.contains("LR"), text)
+    assert(text.contains("GPIOA"), text)
+}
+
+test "flagsTextM3 is the same four-letter shape as PubVM's flags" {
+    var m = MachineM3()
+    val text = flagsTextM3(m.snapshot())
+    assert(text.contains("C "), text)
+    assert(text.contains("Z "), text)
+    assert(text.contains("N "), text)
+    assert(text.contains("V "), text)
+}
+
+test "instructionExplanationM3 names the register the last instruction changed" {
+    val assembled = assembleSourceM3("MOV R0, #42\nHALT\n")
+    var m = MachineM3()
+    m.load(assembled.image())
+    val before = m.snapshot()
+    m.step()
+    val after = m.snapshot()
+    val text = instructionExplanationM3(before, after, "en")
+    assert(text.contains("MOV"), text)
+    assert(text.contains("R0"), text)
+}
+
+test "instructionExplanationM3 says nothing changed when nothing did" {
+    val assembled = assembleSourceM3("HALT\n")
+    var m = MachineM3()
+    m.load(assembled.image())
+    val before = m.snapshot()
+    m.step()
+    val after = m.snapshot()
+    val text = instructionExplanationM3(before, after, "en")
+    assert(text.contains("nothing changed"), text)
+}
+
+test "LabM3: assemble, step and run drive a real MachineM3" {
+    assert(labM3Assemble(
+        "MOV R0, #3\nloop:\nPRINT R0\nSUB R0, R0, #1\nCMP R0, #0\nBNE loop\nHALT\n", "en"))
+    assert(labM3Assembled())
+    labM3Run("en")
+    val state = labM3State()
+    assert(statusName(state.status()) == "HALTED")
+    assert(state.output().get(0) == "3")
+}
+
+test "LabM3: a failed assembly leaves nothing loaded" {
+    assert(labM3Assemble("FOO R0\nHALT\n", "en") == false)
+    assert(labM3Assembled() == false)
+    assert(labM3Diagnostics().length > 0)
+}

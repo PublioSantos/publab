@@ -79,6 +79,50 @@ class Ui {
     static Button resetButton = Button("", () -> {})
     static Button stepButton = Button("", () -> {})
     static Button runButton = Button("", () -> {})
+
+    // Phase 11 stage A: the 8051 and Cortex-M3 tabs. Their own self-contained
+    // widget set, mirroring PubVM's shape but simpler — one multi-line label
+    // for registers instead of one per register, since each architecture has
+    // a different register count (docs/architecture-comparison.md).
+    static Label lab8051Title = Label("")
+    static Textarea editor8051 = Textarea("")
+    static Button assemble8051Button = Button("", () -> {})
+    static Button reset8051Button = Button("", () -> {})
+    static Button step8051Button = Button("", () -> {})
+    static Button run8051Button = Button("", () -> {})
+    static Label message8051 = Label("")
+    static Label status8051 = Label("")
+    static Label current8051 = Label("")
+    static Label registers8051Title = Label("")
+    static Label registers8051 = Label("")
+    static Label flags8051Title = Label("")
+    static Label flags8051 = Label("")
+    static Label output8051Title = Label("")
+    static Label output8051 = Label("")
+    static Label diagnostics8051Title = Label("")
+    static Label diagnostics8051 = Label("")
+    static Label explain8051Title = Label("")
+    static Label explanation8051 = Label("")
+
+    static Label labM3Title = Label("")
+    static Textarea editorM3 = Textarea("")
+    static Button assembleM3Button = Button("", () -> {})
+    static Button resetM3Button = Button("", () -> {})
+    static Button stepM3Button = Button("", () -> {})
+    static Button runM3Button = Button("", () -> {})
+    static Label messageM3 = Label("")
+    static Label statusM3 = Label("")
+    static Label currentM3 = Label("")
+    static Label registersM3Title = Label("")
+    static Label registersM3 = Label("")
+    static Label flagsM3Title = Label("")
+    static Label flagsM3 = Label("")
+    static Label outputM3Title = Label("")
+    static Label outputM3 = Label("")
+    static Label diagnosticsM3Title = Label("")
+    static Label diagnosticsM3 = Label("")
+    static Label explainM3Title = Label("")
+    static Label explanationM3 = Label("")
 }
 
 Color textColor() { return Color(230, 230, 242) }
@@ -160,6 +204,122 @@ void refresh() {
     }
 }
 
+// Phase 11 stage A: the 8051 tab's own refresh, independent of PubVM's —
+// same rule as Lab8051.kf itself (docs/architecture-comparison.md).
+void refresh8051() {
+    val language = labLanguage()
+    val state = lab8051State()
+    Ui.status8051.text = statusText8051(state, language)
+    Ui.current8051.text = currentInstructionLine8051(state, language)
+    Ui.message8051.text = lab8051Message()
+    Ui.registers8051.text = joinLines(registerLines8051(state))
+    Ui.flags8051.text = flagsText8051(state)
+    Ui.output8051.text = outputText8051(state, language)
+    Ui.explanation8051.text = lab8051Explanation(language)
+    if (lab8051Diagnostics().length > 0) {
+        Ui.diagnostics8051.text = lab8051Diagnostics()
+    } else {
+        Ui.diagnostics8051.text = emptyDiagnosticsMessage(language)
+    }
+    val status = statusName(state.status())
+    if (status == "ERROR") { Ui.status8051.color = errorColor() }
+    else if (status == "HALTED") { Ui.status8051.color = successColor() }
+    else { Ui.status8051.color = focusColor() }
+}
+
+void refreshM3() {
+    val language = labLanguage()
+    val state = labM3State()
+    Ui.statusM3.text = statusTextM3(state, language)
+    Ui.currentM3.text = currentInstructionLineM3(state, language)
+    Ui.messageM3.text = labM3Message()
+    Ui.registersM3.text = joinLines(registerLinesM3(state))
+    Ui.flagsM3.text = flagsTextM3(state)
+    Ui.outputM3.text = outputTextM3(state, language)
+    Ui.explanationM3.text = labM3Explanation(language)
+    if (labM3Diagnostics().length > 0) {
+        Ui.diagnosticsM3.text = labM3Diagnostics()
+    } else {
+        Ui.diagnosticsM3.text = emptyDiagnosticsMessage(language)
+    }
+    val status = statusName(state.status())
+    if (status == "ERROR") { Ui.statusM3.color = errorColor() }
+    else if (status == "HALTED") { Ui.statusM3.color = successColor() }
+    else { Ui.statusM3.color = focusColor() }
+}
+
+void relabel8051() {
+    val language = labLanguage()
+    Ui.lab8051Title.text = lab8051Title(language)
+    Ui.assemble8051Button.text = assembleButton(language)
+    Ui.reset8051Button.text = resetButton(language)
+    Ui.step8051Button.text = stepButton(language)
+    Ui.run8051Button.text = runButton(language)
+    Ui.registers8051Title.text = registersTitle(language)
+    Ui.flags8051Title.text = flagsTitle(language)
+    Ui.explain8051Title.text = explainTitle(language)
+    Ui.output8051Title.text = outputTitle(language)
+    Ui.diagnostics8051Title.text = diagnosticsTitle(language)
+}
+
+void relabelM3() {
+    val language = labLanguage()
+    Ui.labM3Title.text = labM3Title(language)
+    Ui.assembleM3Button.text = assembleButton(language)
+    Ui.resetM3Button.text = resetButton(language)
+    Ui.stepM3Button.text = stepButton(language)
+    Ui.runM3Button.text = runButton(language)
+    Ui.registersM3Title.text = registersTitle(language)
+    Ui.flagsM3Title.text = flagsTitle(language)
+    Ui.explainM3Title.text = explainTitle(language)
+    Ui.outputM3Title.text = outputTitle(language)
+    Ui.diagnosticsM3Title.text = diagnosticsTitle(language)
+}
+
+// --- 8051 control handlers ---
+
+void on8051Assemble() {
+    lab8051Assemble(Ui.editor8051.text(), labLanguage())
+    refresh8051()
+}
+
+void on8051Reset() {
+    lab8051Reset(labLanguage())
+    refresh8051()
+}
+
+void on8051Step() {
+    lab8051Step(labLanguage())
+    refresh8051()
+}
+
+void on8051Run() {
+    lab8051Run(labLanguage())
+    refresh8051()
+}
+
+// --- Cortex-M3 control handlers ---
+
+void onM3Assemble() {
+    labM3Assemble(Ui.editorM3.text(), labLanguage())
+    refreshM3()
+}
+
+void onM3Reset() {
+    labM3Reset(labLanguage())
+    refreshM3()
+}
+
+void onM3Step() {
+    labM3Step(labLanguage())
+    refreshM3()
+}
+
+void onM3Run() {
+    labM3Run(labLanguage())
+    refreshM3()
+}
+
 // The labels that are not machine state: panel titles and control captions.
 // Re-applied when the language changes.
 void relabel() {
@@ -231,6 +391,10 @@ void onLanguageChange() {
     labSetLanguage(supportedLanguages().get(Ui.languages.selected()))
     relabel()
     refresh()
+    relabel8051()
+    refresh8051()
+    relabelM3()
+    refreshM3()
 }
 
 void onMemoryModeChange() {
@@ -391,6 +555,134 @@ main() {
     Ui.languages.on("change", (e: Event) -> onLanguageChange())
     Ui.memoryModes.on("change", (e: Event) -> onMemoryModeChange())
 
+    // --- phase 11 stage A: the 8051 laboratory ---
+    // Its own self-contained section — no tab/visibility widget exists in
+    // Kof's UI runtime (docs/architecture.md), so all three machines sit one
+    // below another in this same window, rather than a dynamically
+    // shown/hidden tab (docs/architecture-comparison.md).
+    Ui.lab8051Title = Label("")
+    Ui.lab8051Title.fontSize = 18
+    Ui.lab8051Title.bold = true
+    Ui.lab8051Title.color = focusColor()
+
+    Ui.editor8051 = Textarea(lab8051DefaultSource())
+    Ui.editor8051.setRows(10)
+    Ui.editor8051.setId("i8051-source")
+
+    Ui.assemble8051Button = Button("", () -> on8051Assemble())
+    Ui.reset8051Button = Button("", () -> on8051Reset())
+    Ui.step8051Button = Button("", () -> on8051Step())
+    Ui.run8051Button = Button("", () -> on8051Run())
+    var controls8051 = Row(listOf(Ui.assemble8051Button, Ui.reset8051Button,
+        Ui.step8051Button, Ui.run8051Button))
+
+    Ui.message8051 = Label("")
+    Ui.message8051.fontSize = 12
+    Ui.message8051.color = dataColor()
+    Ui.status8051 = Label("")
+    Ui.status8051.bold = true
+    Ui.current8051 = Label("")
+    Ui.current8051.color = dataColor()
+
+    Ui.registers8051Title = sectionTitle(Label(""))
+    Ui.registers8051 = Label("")
+    var registers8051Panel = View(panel)
+    registers8051Panel.bind(Column(listOf(Ui.registers8051Title, Ui.registers8051)))
+
+    Ui.flags8051Title = sectionTitle(Label(""))
+    Ui.flags8051 = Label("")
+    Ui.flags8051.color = focusColor()
+    var flags8051Panel = View(panel)
+    flags8051Panel.bind(Column(listOf(Ui.flags8051Title, Ui.flags8051)))
+
+    Ui.explain8051Title = sectionTitle(Label(""))
+    Ui.explanation8051 = Label("")
+    Ui.explanation8051.color = focusColor()
+    var explain8051Panel = View(panel)
+    explain8051Panel.bind(Column(listOf(Ui.explain8051Title, Ui.explanation8051)))
+
+    Ui.output8051Title = sectionTitle(Label(""))
+    Ui.output8051 = Label("")
+    Ui.output8051.color = successColor()
+    var output8051Panel = View(panel)
+    output8051Panel.bind(Column(listOf(Ui.output8051Title, Ui.output8051)))
+
+    Ui.diagnostics8051Title = sectionTitle(Label(""))
+    Ui.diagnostics8051 = Label("")
+    Ui.diagnostics8051.color = errorColor()
+    var diagnostics8051Panel = View(panel)
+    diagnostics8051Panel.bind(Column(listOf(Ui.diagnostics8051Title, Ui.diagnostics8051)))
+
+    var lab8051Body = Column(listOf(Ui.lab8051Title,
+        Ui.editor8051, controls8051, Ui.message8051,
+        Ui.status8051, Ui.current8051,
+        Row(listOf(registers8051Panel, flags8051Panel)),
+        explain8051Panel, output8051Panel, diagnostics8051Panel))
+    var lab8051Shell = View(root)
+    lab8051Shell.bind(lab8051Body)
+
+    // --- phase 11 stage A: the Cortex-M3 laboratory ---
+    Ui.labM3Title = Label("")
+    Ui.labM3Title.fontSize = 18
+    Ui.labM3Title.bold = true
+    Ui.labM3Title.color = focusColor()
+
+    Ui.editorM3 = Textarea(labM3DefaultSource())
+    Ui.editorM3.setRows(10)
+    Ui.editorM3.setId("cm3-source")
+
+    Ui.assembleM3Button = Button("", () -> onM3Assemble())
+    Ui.resetM3Button = Button("", () -> onM3Reset())
+    Ui.stepM3Button = Button("", () -> onM3Step())
+    Ui.runM3Button = Button("", () -> onM3Run())
+    var controlsM3 = Row(listOf(Ui.assembleM3Button, Ui.resetM3Button,
+        Ui.stepM3Button, Ui.runM3Button))
+
+    Ui.messageM3 = Label("")
+    Ui.messageM3.fontSize = 12
+    Ui.messageM3.color = dataColor()
+    Ui.statusM3 = Label("")
+    Ui.statusM3.bold = true
+    Ui.currentM3 = Label("")
+    Ui.currentM3.color = dataColor()
+
+    Ui.registersM3Title = sectionTitle(Label(""))
+    Ui.registersM3 = Label("")
+    var registersM3Panel = View(panel)
+    registersM3Panel.bind(Column(listOf(Ui.registersM3Title, Ui.registersM3)))
+
+    Ui.flagsM3Title = sectionTitle(Label(""))
+    Ui.flagsM3 = Label("")
+    Ui.flagsM3.color = focusColor()
+    var flagsM3Panel = View(panel)
+    flagsM3Panel.bind(Column(listOf(Ui.flagsM3Title, Ui.flagsM3)))
+
+    Ui.explainM3Title = sectionTitle(Label(""))
+    Ui.explanationM3 = Label("")
+    Ui.explanationM3.color = focusColor()
+    var explainM3Panel = View(panel)
+    explainM3Panel.bind(Column(listOf(Ui.explainM3Title, Ui.explanationM3)))
+
+    Ui.outputM3Title = sectionTitle(Label(""))
+    Ui.outputM3 = Label("")
+    Ui.outputM3.color = successColor()
+    var outputM3Panel = View(panel)
+    outputM3Panel.bind(Column(listOf(Ui.outputM3Title, Ui.outputM3)))
+
+    Ui.diagnosticsM3Title = sectionTitle(Label(""))
+    Ui.diagnosticsM3 = Label("")
+    Ui.diagnosticsM3.color = errorColor()
+    var diagnosticsM3Panel = View(panel)
+    diagnosticsM3Panel.bind(Column(listOf(Ui.diagnosticsM3Title, Ui.diagnosticsM3)))
+
+    var labM3Body = Column(listOf(Ui.labM3Title,
+        Ui.editorM3, controlsM3, Ui.messageM3,
+        Ui.statusM3, Ui.currentM3,
+        Row(listOf(registersM3Panel, flagsM3Panel)),
+        explainM3Panel, outputM3Panel, diagnosticsM3Panel))
+    var labM3Shell = View(root)
+    labM3Shell.bind(labM3Body)
+
     // --- compose ---
     var body = Column(listOf(header, Hr(), selectors, Hr(),
         Ui.sourceTitle, Ui.editor, controls, Ui.message, Hr(),
@@ -398,6 +690,7 @@ main() {
         Row(listOf(registersPanel, flagsPanel)),
         explainPanel, changesPanel, memoryPanel, stackPanel,
         outputPanel, diagnosticsPanel,
+        Hr(), lab8051Shell, Hr(), labM3Shell,
         Hr(), poweredBy))
     var shell = View(root)
     shell.bind(body)
@@ -406,5 +699,9 @@ main() {
     labSelectMachine(0)
     relabel()
     refresh()
+    relabel8051()
+    refresh8051()
+    relabelM3()
+    refreshM3()
     Ui.window.show()
 }

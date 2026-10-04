@@ -1,0 +1,71 @@
+package tests
+
+import publab.machine
+import publab.i8051
+import publab.ui
+
+// Phase 11 stage A — the 8051 tab's presenter and explanation, built from
+// real MachineState8051 snapshots, the same rule the PubVM UI tests follow
+// (tests/explain_test.kf).
+
+test "registerLines8051 lists A, B, R0-R7 and P0, by real name" {
+    val assembled = assembleSource8051("MOV A, #10\nMOV R0, #5\nMOV P0, #255\nHALT\n")
+    assert(assembled.ok(), renderDiagnostics8051(assembled.diagnostics(), "en"))
+    var m = Machine8051()
+    m.load(assembled.image())
+    m.run(100)
+    val lines = registerLines8051(m.snapshot())
+    val text = joinLines(lines)
+    assert(text.contains("A") && text.contains("10"), text)
+    assert(text.contains("R0"), text)
+    assert(text.contains("P0"), text)
+}
+
+test "flagsText8051 shows C/AC/OV/P/BANK — no Z or N, the real 8051 has none" {
+    var m = Machine8051()
+    val text = flagsText8051(m.snapshot())
+    assert(text.contains("C "), text)
+    assert(text.contains("AC"), text)
+    assert(text.contains("OV"), text)
+    assert(text.contains("P "), text)
+    assert(text.contains("BANK"), text)
+    assert(text.contains("Z ") == false, "the real 8051 has no persistent Z flag")
+}
+
+test "instructionExplanation8051 names the register the last instruction changed" {
+    val assembled = assembleSource8051("MOV A, #42\nHALT\n")
+    var m = Machine8051()
+    m.load(assembled.image())
+    val before = m.snapshot()
+    m.step()
+    val after = m.snapshot()
+    val text = instructionExplanation8051(before, after, "en")
+    assert(text.contains("MOV"), text)
+    assert(text.contains("A"), text)
+}
+
+test "instructionExplanation8051 says nothing changed when nothing did" {
+    val assembled = assembleSource8051("HALT\n")
+    var m = Machine8051()
+    m.load(assembled.image())
+    val before = m.snapshot()
+    m.step()
+    val after = m.snapshot()
+    val text = instructionExplanation8051(before, after, "en")
+    assert(text.contains("nothing changed"), text)
+}
+
+test "Lab8051: assemble, step and run drive a real Machine8051" {
+    assert(lab8051Assemble("MOV A, #3\nloop:\nPRINT A\nDEC A\nJNZ loop\nHALT\n", "en"))
+    assert(lab8051Assembled())
+    lab8051Run("en")
+    val state = lab8051State()
+    assert(statusName(state.status()) == "HALTED")
+    assert(state.output().get(0) == "3")
+}
+
+test "Lab8051: a failed assembly leaves nothing loaded" {
+    assert(lab8051Assemble("FOO A\nHALT\n", "en") == false)
+    assert(lab8051Assembled() == false)
+    assert(lab8051Diagnostics().length > 0)
+}

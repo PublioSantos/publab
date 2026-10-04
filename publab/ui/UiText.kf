@@ -208,3 +208,28 @@ String stackTitle(String language) {
     if (isPt(language)) { return "PILHA" }
     return "STACK"
 }
+
+// --- phase 11 stage A: the 8051 and Cortex-M3 tabs ---
+
+String lab8051Title(String language) {
+    if (isPt(language)) { return "LABORATÓRIO 8051" }
+    return "8051 LABORATORY"
+}
+
+String labM3Title(String language) {
+    if (isPt(language)) { return "LABORATÓRIO CORTEX-M3" }
+    return "CORTEX-M3 LABORATORY"
+}
+
+// Kof's UI runtime has no tab/visibility widget (docs/architecture.md); all
+// three laboratories are always on the page, one below another, rather than
+// a dynamically shown/hidden tab that would depend on behaviour this
+// toolkit does not have.
+String comparisonNote(String language) {
+    if (isPt(language)) {
+        return "As três máquinas reais ficam uma abaixo da outra nesta mesma janela —"
+            + " role a página para ver o 8051 e o Cortex-M3."
+    }
+    return "All three real machines sit one below another in this same window —"
+        + " scroll down for the 8051 and the Cortex-M3."
+}

@@ -1,0 +1,70 @@
+package publab.ui
+
+import publab.i8051
+
+// Phase 11 stage A — a plain-language explanation of the last 8051
+// instruction, built from two real MachineState8051 snapshots (before and
+// after), never a hand-written description of what a mnemonic is "supposed
+// to" do. Deliberately simpler than phase 7's PubVM explanation (Explain.kf):
+// a generic "what changed" sentence, not one hand-tuned paragraph per
+// mnemonic — phase 11 is a comparison feature, not a second educational
+// layer to maintain per architecture.
+
+String noExplainYet8051(String language) {
+    return noExplainYet(language)
+}
+
+List<String> changedRegisterNames8051(MachineState8051 before, MachineState8051 after) {
+    var names: List<String> = listOf()
+    if (before.a() != after.a()) { names.add("A") }
+    if (before.b() != after.b()) { names.add("B") }
+    if (before.p0() != after.p0()) { names.add("P0") }
+    var i = 0
+    while (i < before.r().size && i < after.r().size) {
+        if (before.r().get(i) != after.r().get(i)) { names.add("R" + i) }
+        i = i + 1
+    }
+    return names
+}
+
+List<String> changedFlagNames8051(MachineState8051 before, MachineState8051 after) {
+    var names: List<String> = listOf()
+    if (before.carry() != after.carry()) { names.add("C") }
+    if (before.auxCarry() != after.auxCarry()) { names.add("AC") }
+    if (before.overflow() != after.overflow()) { names.add("OV") }
+    if (before.bank() != after.bank()) { names.add("bank") }
+    return names
+}
+
+String instructionExplanation8051(MachineState8051 before, MachineState8051 after, String language) {
+    val instruction = before.currentInstruction()
+    val registers = changedRegisterNames8051(before, after)
+    val flags = changedFlagNames8051(before, after)
+
+    var changed = ""
+    var i = 0
+    while (i < registers.size) {
+        if (changed.length > 0) { changed = changed + ", " }
+        changed = changed + registers.get(i)
+        i = i + 1
+    }
+    if (flags.size > 0) {
+        if (changed.length > 0) { changed = changed + "; " }
+        var flagList = ""
+        i = 0
+        while (i < flags.size) {
+            if (flagList.length > 0) { flagList = flagList + ", " }
+            flagList = flagList + flags.get(i)
+            i = i + 1
+        }
+        if (isPt(language)) { changed = changed + "flags " + flagList }
+        else { changed = changed + "flags " + flagList }
+    }
+
+    if (changed.length == 0) {
+        if (isPt(language)) { return instruction + " — nada mudou" }
+        return instruction + " — nothing changed"
+    }
+    if (isPt(language)) { return instruction + " — mudou: " + changed }
+    return instruction + " — changed: " + changed
+}

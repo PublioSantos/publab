@@ -1,0 +1,71 @@
+package publab.ui
+
+import publab.machine
+import publab.i8051
+
+// Presentation for the 8051 tab (phase 11 stage A), mirroring Presenter.kf's
+// shape for PubVM. Pure and tested on both targets, like the rest of
+// publab.ui — no widget, no machine mutation.
+
+List<String> registerLines8051(MachineState8051 state) {
+    var lines: List<String> = listOf()
+    lines.add(padRight("A", 4) + "DEC " + padLeft("" + state.a(), 3)
+        + "   HEX " + toHex(state.a() as Long, 2))
+    lines.add(padRight("B", 4) + "DEC " + padLeft("" + state.b(), 3)
+        + "   HEX " + toHex(state.b() as Long, 2))
+    var i = 0
+    while (i < state.r().size) {
+        val value = state.r().get(i)
+        lines.add(padRight("R" + i, 4) + "DEC " + padLeft("" + value, 3)
+            + "   HEX " + toHex(value as Long, 2))
+        i = i + 1
+    }
+    lines.add(padRight("P0", 4) + "DEC " + padLeft("" + state.p0(), 3)
+        + "   HEX " + toHex(state.p0() as Long, 2))
+    return lines
+}
+
+// No Z/N in the real 8051 — only C, AC, OV and the derived P (docs/8051.md).
+String flagsText8051(MachineState8051 state) {
+    return "C " + flagDigit(state.carry())
+        + "    AC " + flagDigit(state.auxCarry())
+        + "    OV " + flagDigit(state.overflow())
+        + "    P " + flagDigit(state.parity())
+        + "    BANK " + state.bank()
+}
+
+String statusText8051(MachineState8051 state, String language) {
+    return padRight(statusWord(statusName(state.status()), language), 12)
+        + "PC 0x" + toHex(state.pc() as Long, 4)
+        + "    SP 0x" + toHex(state.sp() as Long, 2)
+        + "    " + state.cycles() + " " + cyclesWord(language)
+}
+
+String currentInstructionLine8051(MachineState8051 state, String language) {
+    return padRight(currentWord(language), 10) + state.currentInstruction()
+}
+
+String outputText8051(MachineState8051 state, String language) {
+    if (state.output().size == 0) { return noOutputMessage(language) }
+    var out = ""
+    for (var line in state.output()) {
+        if (out.length > 0) { out = out + "\n" }
+        out = out + line
+    }
+    return out
+}
+
+String runMessage8051(MachineState8051 state, String language) {
+    val status = statusName(state.status())
+    if (status == "ERROR") { return errorMessage(state.errorMessage(), language) }
+    if (status == "HALTED") { return haltedMessage(state.cycles(), language) }
+    if (status == "PAUSED") { return didNotFinishMessage(state.cycles(), language) }
+    return assembledMessage(0, language)
+}
+
+String stepMessage8051(MachineState8051 state, String language) {
+    val status = statusName(state.status())
+    if (status == "ERROR") { return errorMessage(state.errorMessage(), language) }
+    if (status == "HALTED") { return haltedMessage(state.cycles(), language) }
+    return pausedAtMessage(state.cycles(), language)
+}

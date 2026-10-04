@@ -2,7 +2,7 @@
 
 # Architecture comparison — educational model
 
-## Status: not started — this page is the scope, awaiting approval
+## Status: stage A done
 
 This page is the full scope for phase 11, written before any code, the same
 discipline phases 8, 9 and 10 used. Phase 11 is **not** a fourth machine: it
@@ -38,7 +38,20 @@ run side by side, so the differences documented in `docs/8051.md` and
   Phase 11 does not go looking for new real-vs-abstraction distinctions of
   its own.
 
-## Stage A — 8051 and Cortex-M3 get a UI tab each
+## Stage A — 8051 and Cortex-M3 get a UI tab each — done
+
+Kof's UI runtime has no tab or visibility widget (`docs/architecture.md` lists
+the toolkit's real constraints), so "tab" here means a self-contained
+section, not a dynamically shown/hidden pane: all three laboratories —
+PubVM, 8051, Cortex-M3 — sit one below another in the same window, each with
+its own editor, controls, registers, flags, output, diagnostics and
+explanation. `publab/ui/Lab8051.kf` and `publab/ui/LabM3.kf` are the
+controllers (mirroring `Lab.kf`'s shape); `Presenter8051.kf`/`PresenterM3.kf`
+render their state; `Explain8051.kf`/`ExplainM3.kf` give each one a
+generic "what changed" explanation (registers and flags that differed
+between the before/after snapshot) rather than the hand-tuned
+per-mnemonic prose phase 7 wrote for PubVM — phase 11 is a comparison
+feature, not a second educational layer to maintain per architecture.
 
 Phases 9 and 10 stopped at the engine: "no UI tab yet, same order the other
 two machines followed" (docs/8051.md, docs/cortex-m3.md). Phase 11 cannot

@@ -1,0 +1,71 @@
+package publab.ui
+
+import publab.machine
+import publab.cm3
+
+// Presentation for the Cortex-M3 tab (phase 11 stage A), mirroring
+// Presenter.kf's shape for PubVM. Pure and tested on both targets, like the
+// rest of publab.ui — no widget, no machine mutation.
+
+List<String> registerLinesM3(MachineStateM3 state) {
+    var lines: List<String> = listOf()
+    var i = 0
+    while (i < state.registers().size) {
+        val value = state.registers().get(i)
+        lines.add(padRight("R" + i, 5) + "DEC " + padLeft("" + value, 11)
+            + "   HEX " + toHex(value, 8))
+        i = i + 1
+    }
+    lines.add(padRight("SP", 5) + "DEC " + padLeft("" + state.sp(), 11)
+        + "   HEX " + toHex(state.sp(), 8))
+    lines.add(padRight("LR", 5) + "DEC " + padLeft("" + state.lr(), 11)
+        + "   HEX " + toHex(state.lr(), 8))
+    lines.add(padRight("GPIOA", 5) + "DEC " + padLeft("" + state.gpioa(), 11)
+        + "   HEX " + toHex(state.gpioa(), 8))
+    return lines
+}
+
+// APSR: N, Z, C, V — the same four-letter shape as PubVM's flags, on purpose
+// (docs/cortex-m3.md). C's sense on SUB/CMP is inverted from PubVM's own —
+// this panel reads whatever the engine computed, never re-derives it.
+String flagsTextM3(MachineStateM3 state) {
+    return "C " + flagDigit(state.carry())
+        + "    Z " + flagDigit(state.zero())
+        + "    N " + flagDigit(state.negative())
+        + "    V " + flagDigit(state.overflow())
+}
+
+String statusTextM3(MachineStateM3 state, String language) {
+    return padRight(statusWord(statusName(state.status()), language), 12)
+        + "PC 0x" + toHex(state.pc() as Long, 8)
+        + "    " + state.cycles() + " " + cyclesWord(language)
+}
+
+String currentInstructionLineM3(MachineStateM3 state, String language) {
+    return padRight(currentWord(language), 10) + state.currentInstruction()
+}
+
+String outputTextM3(MachineStateM3 state, String language) {
+    if (state.output().size == 0) { return noOutputMessage(language) }
+    var out = ""
+    for (var line in state.output()) {
+        if (out.length > 0) { out = out + "\n" }
+        out = out + line
+    }
+    return out
+}
+
+String runMessageM3(MachineStateM3 state, String language) {
+    val status = statusName(state.status())
+    if (status == "ERROR") { return errorMessage(state.errorMessage(), language) }
+    if (status == "HALTED") { return haltedMessage(state.cycles(), language) }
+    if (status == "PAUSED") { return didNotFinishMessage(state.cycles(), language) }
+    return assembledMessage(0, language)
+}
+
+String stepMessageM3(MachineStateM3 state, String language) {
+    val status = statusName(state.status())
+    if (status == "ERROR") { return errorMessage(state.errorMessage(), language) }
+    if (status == "HALTED") { return haltedMessage(state.cycles(), language) }
+    return pausedAtMessage(state.cycles(), language)
+}

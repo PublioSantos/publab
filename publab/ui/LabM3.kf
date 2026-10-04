@@ -1,0 +1,108 @@
+package publab.ui
+
+import publab.machine
+import publab.cm3
+
+// Phase 11 stage A — the Cortex-M3 tab's controller, mirroring Lab.kf's
+// shape for PubVM and Lab8051.kf's for the 8051. Its own self-contained
+// state, the same independence the three engines keep
+// (docs/architecture-comparison.md).
+
+class LabM3State {
+    static MachineM3 machine = MachineM3()
+    static String diagnostics = ""
+    static String message = ""
+    static Bool assembled = false
+    static Int imageBytes = 0
+    static MachineStateM3 previous = MachineM3().snapshot()
+}
+
+String labM3DefaultSource() {
+    return "MOV R0, #3\n"
+        + "loop:\n"
+        + "PRINT R0\n"
+        + "SUB R0, R0, #1\n"
+        + "CMP R0, #0\n"
+        + "BNE loop\n"
+        + "PRINT R0\n"
+        + "HALT\n"
+}
+
+MachineStateM3 labM3State() {
+    return LabM3State.machine.snapshot()
+}
+
+MachineStateM3 labM3Previous() {
+    return LabM3State.previous
+}
+
+String labM3Diagnostics() {
+    return LabM3State.diagnostics
+}
+
+String labM3Message() {
+    return LabM3State.message
+}
+
+Bool labM3Assembled() {
+    return LabM3State.assembled
+}
+
+void labM3Remember() {
+    LabM3State.previous = LabM3State.machine.snapshot()
+}
+
+String labM3Explanation(String language) {
+    if (!LabM3State.assembled) { return noExplainYetM3(language) }
+    return instructionExplanationM3(LabM3State.previous, LabM3State.machine.snapshot(), language)
+}
+
+Bool labM3Assemble(String source, String language) {
+    val result = assembleSourceM3(source)
+    LabM3State.diagnostics = renderDiagnosticsM3(result.diagnostics(), language)
+    LabM3State.machine = MachineM3()
+    if (result.ok()) {
+        LabM3State.machine.load(result.image())
+        LabM3State.assembled = true
+        LabM3State.imageBytes = result.byteCount()
+        LabM3State.message = assembledMessage(result.byteCount(), language)
+    } else {
+        LabM3State.assembled = false
+        LabM3State.imageBytes = 0
+        LabM3State.message = assemblyFailedMessage(language)
+    }
+    labM3Remember()
+    return result.ok()
+}
+
+void labM3Reset(String language) {
+    LabM3State.machine.reset()
+    if (LabM3State.assembled) {
+        LabM3State.message = assembledMessage(LabM3State.imageBytes, language)
+    } else {
+        LabM3State.message = notAssembledMessage(language)
+    }
+    labM3Remember()
+}
+
+Bool labM3Step(String language) {
+    if (!LabM3State.assembled) {
+        LabM3State.message = notAssembledMessage(language)
+        return false
+    }
+    labM3Remember()
+    val executed = LabM3State.machine.step()
+    LabM3State.message = stepMessageM3(LabM3State.machine.snapshot(), language)
+    return executed
+}
+
+Int labM3Run(String language) {
+    if (!LabM3State.assembled) {
+        LabM3State.message = notAssembledMessage(language)
+        return 0
+    }
+    labM3Remember()
+    val cycles = LabM3State.machine.run(labRunBudget())
+    LabM3State.message = runMessageM3(LabM3State.machine.snapshot(), language)
+    return cycles
+}

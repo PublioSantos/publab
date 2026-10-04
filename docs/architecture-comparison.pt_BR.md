@@ -2,7 +2,7 @@
 
 # Comparação entre arquiteturas — modelo educacional
 
-## Situação: não iniciada — esta página é o escopo, aguardando aprovação
+## Situação: etapa A concluída
 
 Esta página é o escopo completo para a fase 11, escrita antes de qualquer
 código, a mesma disciplina que as fases 8, 9 e 10 usaram. A fase 11 **não**
@@ -39,7 +39,21 @@ estudante vê acontecer.
   8-10. A fase 11 não sai procurando novas distinções real-vs-abstração
   por conta própria.
 
-## Etapa A — 8051 e Cortex-M3 ganham uma aba cada
+## Etapa A — 8051 e Cortex-M3 ganham uma aba cada — concluída
+
+O runtime de UI do Kof não tem um widget de aba ou de visibilidade
+(`docs/architecture.md` lista as restrições reais do toolkit), então "aba"
+aqui significa uma seção autocontida, não um painel dinamicamente
+mostrado/escondido: os três laboratórios — PubVM, 8051, Cortex-M3 — ficam
+um abaixo do outro na mesma janela, cada um com seu próprio editor,
+controles, registradores, flags, saída, diagnósticos e explicação.
+`publab/ui/Lab8051.kf` e `publab/ui/LabM3.kf` são os controladores
+(espelhando a forma do `Lab.kf`); `Presenter8051.kf`/`PresenterM3.kf`
+renderizam seus estados; `Explain8051.kf`/`ExplainM3.kf` dão a cada um uma
+explicação genérica de "o que mudou" (registradores e flags que diferiram
+entre o estado antes/depois) em vez da prosa por mnemônico feita à mão que
+a fase 7 escreveu para a PubVM — a fase 11 é um recurso de comparação, não
+uma segunda camada educacional para manter por arquitetura.
 
 As fases 9 e 10 pararam na engine: "ainda sem aba na UI, a mesma ordem que
 as outras duas máquinas seguiram" (docs/8051.md, docs/cortex-m3.md). A fase
