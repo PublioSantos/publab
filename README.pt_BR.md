@@ -102,7 +102,7 @@ abaixo é garantida pela suíte de testes.
 | 6 | Debugger | **concluída** |
 | 7 | Camada educacional | **concluída** |
 | 8 | Advanced Mode — X, Y, SP, FP, stack, shifts, saltos extras | **concluída** |
-| 9 | Modelo educacional do 8051 | não iniciada |
+| 9 | Modelo educacional do 8051 | escopo documentado, não implementada |
 | 10 | Modelo educacional do Cortex-M3 | não iniciada |
 | 11 | Comparação entre arquiteturas | não iniciada |
 | 12 | Export | não iniciada |
