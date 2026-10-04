@@ -72,7 +72,7 @@ unless it is covered by the test suite.
 | 5B | Minimal UI | **done** |
 | 6 | Debugger | **done** |
 | 7 | Educational layer | **done** |
-| 8 | Advanced Mode — X, Y, SP, FP, stack, shifts, extra jumps | in progress (stage A: X, Y, SP, FP, PUSH, POP) |
+| 8 | Advanced Mode — X, Y, SP, FP, stack, shifts, extra jumps | in progress (stages A-B: X, Y, SP, FP, PUSH, POP, CALL, RET, ENTER, LEAVE) |
 | 9 | 8051 educational model | not started |
 | 10 | Cortex-M3 educational model | not started |
 | 11 | Architecture comparison | not started |
@@ -109,12 +109,17 @@ Advanced Mode (phase 8) is under way in stages. Stage A is done: `X` and `Y`
 are ordinary general registers; `SP` and `FP` are implemented as addresses
 next to `PC` (not word-sized registers — `SP`'s initial value, one past the
 top of memory, does not fit an 8-bit or 16-bit word); `PUSH` and `POP` move
-the stack, with explicit overflow/underflow faults, never a silent wrap. The
-debugger's STACK panel shows SP/FP and the words PUSH has written, read from
-the real memory through SP. `CALL`, `RET`, `ENTER`, `LEAVE`, the shifts,
-rotates and remaining conditional jumps (`JN`, `JO`, `JNZ`, `JNC`) are later
-stages — the assembler recognises those mnemonics and says they belong to
-Advanced Mode, rather than reporting them as unknown.
+the stack, with explicit overflow/underflow faults, never a silent wrap.
+Stage B is done too: `CALL` and `RET` push/pop the return address, `ENTER`
+and `LEAVE` are the classic save-FP / restore-FP prologue and epilogue — all
+through the same stack and the same overflow/underflow checks `PUSH`/`POP`
+use, but moving `addressBytes` rather than `wordBytes` (a return address and
+a saved FP are locations, not data — see "Stack" in
+[docs/pubvm.md](docs/pubvm.md)). The debugger's STACK panel shows SP/FP and
+the words on the stack, read from the real memory through SP. The shifts,
+rotates and remaining conditional jumps (`JN`, `JO`, `JNZ`, `JNC`) are a
+later stage — the assembler recognises those mnemonics and says they belong
+to Advanced Mode, rather than reporting them as unknown.
 
 One absence is deliberate rather than pending:
 

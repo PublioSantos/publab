@@ -312,7 +312,7 @@ test "the controller reports the source line, and the source it assembled" {
     labStep()
     assert(labSourceLine() == "LINE 3    ADD A, B", labSourceLine())
     // A failed assembly leaves no map and no source to point at.
-    labAssemble("CALL A\n")
+    labAssemble("SHL A\n")
     assert(labSourceMap().size == 0)
     assert(labAssembledSource() == "")
 }

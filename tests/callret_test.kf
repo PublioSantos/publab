@@ -1,0 +1,206 @@
+package tests
+
+import publab.machine
+import publab.assembler
+
+// Phase 8, stage B — CALL, RET, ENTER, LEAVE. They share the exact same
+// stack PUSH/POP use (same SP, same overflow/underflow faults), but move
+// `addressBytes`, never `wordBytes`: a return address and a saved FP are
+// locations, not data (see "Stack" / "Return addresses and frames" in
+// docs/pubvm.md, written before this was implemented).
+
+Machine loaded(String source, MachineConfig config) {
+    val assembled = assembleSource(source, config)
+    assert(assembled.ok(), renderDiagnostics(assembled.diagnostics(), "en"))
+    var m = Machine(config)
+    m.load(assembled.image())
+    return m
+}
+
+// --- CALL / RET ------------------------------------------------------------
+
+test "CALL pushes the return address and jumps to the target" {
+    var m = loaded("CALL sub\nHALT\nsub:\nHALT\n", pubvm8())
+    val top = pubvm8().memorySize()
+    val returnAddress = m.pc + instructionLength(formAddr(), 8, 16)
+    m.step()
+    assert(m.sp == top - 2, "addressBytes is 2 on every variant")
+    assert(m.memory.readWord(m.sp, 2) == returnAddress as Long)
+    assert(m.pc == returnAddress + 1, "PC is now at 'sub', right after the HALT it skipped over")
+}
+
+test "RET returns to the instruction right after CALL, not after the callee" {
+    var m = loaded(
+        "CALL sub\nPRINT A\nHALT\nsub:\nLOAD A, 99\nRET\n", pubvm8())
+    m.run(1000)
+    assert(statusName(m.status) == "HALTED")
+    assert(m.output.size == 1 && m.output.get(0) == "99",
+        "execution really came back to PRINT A, after RET")
+}
+
+test "CALL disassembles with its address, RET/ENTER/LEAVE with no operands" {
+    var m = loaded("CALL sub\nHALT\nsub:\nENTER\nLEAVE\nRET\n", pubvm8())
+    assert(m.currentInstructionText() == "CALL 0x0004")
+    m.step() // executes CALL, lands on ENTER
+    assert(m.currentInstructionText() == "ENTER")
+    m.step() // executes ENTER, lands on LEAVE
+    assert(m.currentInstructionText() == "LEAVE")
+    m.step() // executes LEAVE, lands on RET
+    assert(m.currentInstructionText() == "RET")
+}
+
+test "CALL/RET move exactly addressBytes, on every variant, independent of wordBytes" {
+    for (var config in allMachines()) {
+        var m = loaded("CALL sub\nHALT\nsub:\nRET\n", config)
+        val top = config.memorySize()
+        m.step()
+        assert(m.sp == top - 2, config.name() + ": addressBytes is always 2")
+        m.step()
+        assert(m.sp == top, config.name() + ": RET gave the 2 bytes back")
+        assert(statusName(m.status) != "ERROR", config.name())
+    }
+}
+
+// --- nested calls, LIFO like PUSH/POP ---------------------------------------
+
+test "nested CALL/RET unwind in the right order" {
+    var m = loaded(
+        "LOAD A, 1\nCALL outer\nHALT\n"
+        + "outer:\nLOAD A, 2\nCALL inner\nLOAD A, 3\nRET\n"
+        + "inner:\nLOAD A, 9\nRET\n", pubvm8())
+    val top = pubvm8().memorySize()
+    m.run(1000)
+    assert(statusName(m.status) == "HALTED")
+    assert(m.sp == top, "both CALLs were matched by a RET")
+    // outer overwrites A to 3 right after inner returns, then RET — so the
+    // observable final value is outer's, not inner's.
+    assert(m.registers.read(0) == 3 as Long)
+}
+
+test "PUSH/POP and CALL/RET share one stack without interfering" {
+    var m = loaded(
+        "LOAD A, 42\nPUSH A\nCALL sub\nPOP B\nHALT\n"
+        + "sub:\nRET\n", pubvm8())
+    val top = pubvm8().memorySize()
+    m.run(1000)
+    assert(statusName(m.status) == "HALTED")
+    assert(m.sp == top, "the PUSH/POP and the CALL/RET both balanced out")
+    assert(m.registers.read(1) == 42 as Long, "PUSH's value survived the CALL/RET underneath it")
+}
+
+// --- ENTER / LEAVE -----------------------------------------------------------
+
+test "ENTER saves FP and sets FP = SP" {
+    var m = loaded("ENTER\nHALT\n", pubvm8())
+    val top = pubvm8().memorySize()
+    assert(m.fp == 0, "FP starts at 0")
+    m.step()
+    assert(m.sp == top - 2, "ENTER pushed the old FP, addressBytes wide")
+    assert(m.memory.readWord(m.sp, 2) == 0 as Long, "the saved value is the old FP")
+    assert(m.fp == m.sp, "FP now points at the saved old FP")
+}
+
+test "LEAVE restores FP and discards anything above it, then SP == pre-ENTER" {
+    var m = loaded("ENTER\nLEAVE\nHALT\n", pubvm8())
+    val top = pubvm8().memorySize()
+    m.step()
+    val fpAfterEnter = m.fp
+    m.step()
+    assert(m.fp == 0, "LEAVE restored the saved FP")
+    assert(m.sp == top, "SP is back to where it was before ENTER")
+    assert(fpAfterEnter == top - 2, "sanity: ENTER really had moved FP")
+}
+
+test "a full CALL + ENTER + LEAVE + RET subroutine round-trips SP and FP" {
+    var m = loaded(
+        "LOAD A, 1\nCALL sub\nHALT\n"
+        + "sub:\nENTER\nLOAD A, 2\nLEAVE\nRET\n", pubvm8())
+    val top = pubvm8().memorySize()
+    m.run(1000)
+    assert(statusName(m.status) == "HALTED")
+    assert(m.sp == top, "CALL/RET and ENTER/LEAVE both balanced")
+    assert(m.fp == 0, "FP is back to its original value")
+    assert(m.registers.read(0) == 2 as Long, "the subroutine really ran")
+}
+
+test "ENTER/LEAVE nest correctly across a nested CALL" {
+    var m = loaded(
+        "CALL outer\nHALT\n"
+        + "outer:\nENTER\nCALL inner\nLEAVE\nRET\n"
+        + "inner:\nENTER\nLEAVE\nRET\n", pubvm8())
+    val top = pubvm8().memorySize()
+    m.run(1000)
+    assert(statusName(m.status) == "HALTED")
+    assert(m.sp == top)
+    assert(m.fp == 0)
+}
+
+// --- overflow / underflow, shared with PUSH/POP's checks --------------------
+
+test "CALL overflows the same way PUSH does, at the same boundary" {
+    var m = loaded("CALL sub\nHALT\nsub:\nHALT\n", pubvm8())
+    m.sp = 1 // one byte short of the 2 addressBytes CALL needs
+    m.step()
+    assert(statusName(m.status) == "ERROR")
+    assert(m.errorMessage.contains("overflow"), m.errorMessage)
+}
+
+test "RET underflows when nothing was ever CALLed" {
+    var m = loaded("RET\n", pubvm8())
+    assert(m.sp == pubvm8().memorySize())
+    m.step()
+    assert(statusName(m.status) == "ERROR")
+    assert(m.errorMessage.contains("underflow"), m.errorMessage)
+}
+
+test "LEAVE underflows if FP points where nothing was ever pushed" {
+    var m = loaded("LEAVE\nHALT\n", pubvm8())
+    // FP starts at 0, which is a real address — LEAVE sets SP = FP = 0,
+    // and 0 + 2 > memorySize is false, so this is actually valid... instead
+    // force the honest underflow case: FP left at the stack's empty top.
+    m.fp = pubvm8().memorySize()
+    m.step()
+    assert(statusName(m.status) == "ERROR")
+    assert(m.errorMessage.contains("underflow"), m.errorMessage)
+}
+
+// --- preservation: CALL/RET/ENTER/LEAVE touch nothing they should not ------
+
+test "CALL and RET touch no flag and no register" {
+    var m = loaded(
+        "LOAD A, 250\nLOAD B, 20\nADD A, B\nCALL sub\nHALT\nsub:\nRET\n", pubvm8())
+    m.step()
+    m.step()
+    m.step()
+    val carryBefore = m.flags.carry
+    val aBefore = m.registers.read(0)
+    val bBefore = m.registers.read(1)
+    m.step() // CALL
+    m.step() // RET
+    assert(m.flags.carry == carryBefore)
+    assert(m.registers.read(0) == aBefore && m.registers.read(1) == bBefore)
+}
+
+test "ENTER and LEAVE touch no flag and no register" {
+    var m = loaded("LOAD A, 250\nLOAD B, 20\nADD A, B\nENTER\nLEAVE\nHALT\n", pubvm8())
+    m.step()
+    m.step()
+    m.step()
+    val carryBefore = m.flags.carry
+    val aBefore = m.registers.read(0)
+    m.step() // ENTER
+    m.step() // LEAVE
+    assert(m.flags.carry == carryBefore)
+    assert(m.registers.read(0) == aBefore)
+}
+
+test "reset clears SP, FP and the stack's effect back to the start" {
+    var m = loaded("CALL sub\nHALT\nsub:\nENTER\nLEAVE\nRET\n", pubvm8())
+    m.run(1000)
+    assert(statusName(m.status) == "HALTED")
+    m.reset()
+    assert(m.sp == pubvm8().memorySize())
+    assert(m.fp == 0)
+    assert(statusName(m.status) == "READY")
+    assert(m.run(1000) == 5, "and it runs again identically: CALL, ENTER, LEAVE, RET, HALT")
+}

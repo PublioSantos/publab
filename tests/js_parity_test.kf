@@ -258,7 +258,7 @@ test "D-2: a failing first instruction does not index an empty list" {
     assert(badCount.ok() == false)
     assert(badCount.diagnostics().get(0).code() == "ASM003")
 
-    val advanced = assembleSource("CALL A\nHALT\n", pubvm8())
+    val advanced = assembleSource("SHL A\nHALT\n", pubvm8())
     assert(advanced.ok() == false)
     assert(advanced.diagnostics().get(0).code() == "ASM010")
 

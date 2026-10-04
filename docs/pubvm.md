@@ -111,8 +111,65 @@ faults with `ERROR` ("stack underflow").
 `reset()` puts `SP` back at `memorySize` and `FP` back at 0, like every other
 piece of state.
 
-`CALL`, `RET`, `ENTER` and `LEAVE` will use this same stack; they are a later
-stage of Advanced Mode, not yet implemented.
+### Return addresses and frames (stage B)
+
+`CALL`, `RET`, `ENTER` and `LEAVE` push and pop the same stack `PUSH`/`POP`
+use, through the same `SP` and the same overflow/underflow checks — but they
+move `addressBytes` (`addressBits / 8`, 2 on every variant) at a time, never
+`wordBytes`. A return address and a saved frame pointer are **locations**,
+not data: their width follows the 16-bit address space on every variant,
+the same reasoning that keeps `SP` and `FP` themselves out of the
+word-wrapped register file. `PUSH A` on PubVM-32 still moves 4 bytes; `CALL`
+on PubVM-32 still moves 2.
+
+`CALL addr`:
+```
+SP = SP - addressBytes
+MEM[SP] = PC_after_CALL     ; the address of the instruction right after CALL
+PC = addr
+```
+
+`RET`:
+```
+PC = MEM[SP]
+SP = SP + addressBytes
+```
+
+`ENTER` (classic prologue — no locals-size operand yet):
+```
+SP = SP - addressBytes
+MEM[SP] = FP
+FP = SP
+```
+
+`LEAVE` (the matching epilogue):
+```
+SP = FP                     ; discards anything the frame pushed above FP
+FP = MEM[SP]
+SP = SP + addressBytes
+```
+
+The stack right after a `CALL` followed by an `ENTER`, addresses growing
+downward:
+
+```
+higher addresses
+  [ return address ]   <- SP right after CALL, FP does not move yet
+  [ saved FP        ]   <- SP, and FP now points here, right after ENTER
+   ...                      (future locals would go below this line)
+lower addresses
+```
+
+`LEAVE` undoes exactly that (`SP = FP` first, so anything a callee pushed
+above its own frame is discarded without being popped one value at a time),
+leaving `SP` back where it was right after `CALL` — at the return address —
+so the following `RET` pops exactly that.
+
+A call that never matches its `ENTER` with a `LEAVE`, or its `CALL` with a
+`RET`, still cannot corrupt memory: every `PUSH`/`POP`/`CALL`/`RET`/
+`ENTER`/`LEAVE` goes through the same bounds check as `PUSH`/`POP` above, so
+an unmatched chain of calls still hits the explicit stack overflow fault
+instead of growing past address 0.
 
 ## Flags
 

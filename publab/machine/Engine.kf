@@ -170,6 +170,24 @@ class Machine {
         }
     }
 
+    // The one real stack, shared by PUSH/POP (which move `wordBytes`) and by
+    // CALL/RET/ENTER/LEAVE (which move `addressBytes`): a return address or a
+    // saved FP is a location, not data, so its width follows the address
+    // space, not the word, on every variant (see "Stack" in pubvm.md).
+    void pushBytes(Int bytes, Long value) {
+        val newSp = this.sp - bytes
+        if (newSp < 0) { stackOverflowFault() }
+        this.sp = newSp
+        this.memory.writeWord(this.sp, bytes, value)
+    }
+
+    Long popBytes(Int bytes) {
+        if (this.sp + bytes > this.config.memorySize()) { stackUnderflowFault() }
+        val value = this.memory.readWord(this.sp, bytes)
+        this.sp = this.sp + bytes
+        return value
+    }
+
     void applyFlags(AluResult result) {
         this.flags.carry = result.carry()
         this.flags.zero = result.zero()
@@ -187,6 +205,7 @@ class Machine {
     void execute(Decoded d) {
         val ws = this.config.wordSize()
         val w = wordBytes(ws)
+        val a = addressBytes(this.config.addressBits())
         val next = this.pc + d.length()
         val mnemonic = d.mnemonic()
 
@@ -263,24 +282,38 @@ class Machine {
             return
         }
         if (mnemonic == "PUSH") {
-            // Decrement first, then write — SP always points AT the top word
-            // once something is on the stack (the user's own convention).
-            val value = this.registers.read(d.reg1())
-            val newSp = this.sp - w
-            if (newSp < 0) { stackOverflowFault() }
-            this.sp = newSp
-            this.memory.writeWord(this.sp, w, value)
+            this.pushBytes(w, this.registers.read(d.reg1()))
             this.pc = next
             return
         }
         if (mnemonic == "POP") {
-            // SP == memorySize means nothing has been pushed: every PUSH and
-            // POP move SP by exactly `w`, so SP < memorySize is always one
-            // full word of real data, never a partial one.
-            if (this.sp >= this.config.memorySize()) { stackUnderflowFault() }
-            val value = this.memory.readWord(this.sp, w)
-            this.registers.write(d.reg1(), value)
-            this.sp = this.sp + w
+            this.registers.write(d.reg1(), this.popBytes(w))
+            this.pc = next
+            return
+        }
+        if (mnemonic == "CALL") {
+            // The return address is `next`, not `d.address()`: the address a
+            // RET must come back to is right after this CALL, never the
+            // callee's own address.
+            this.pushBytes(a, next as Long)
+            this.pc = d.address()
+            return
+        }
+        if (mnemonic == "RET") {
+            this.pc = (this.popBytes(a) as Int)
+            return
+        }
+        if (mnemonic == "ENTER") {
+            this.pushBytes(a, this.fp as Long)
+            this.fp = this.sp
+            this.pc = next
+            return
+        }
+        if (mnemonic == "LEAVE") {
+            // SP = FP first: whatever this frame pushed above FP (locals, in
+            // a later stage) is discarded without being popped one at a time.
+            this.sp = this.fp
+            this.fp = (this.popBytes(a) as Int)
             this.pc = next
             return
         }

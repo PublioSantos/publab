@@ -117,8 +117,67 @@ falha com `ERROR` ("stack underflow").
 próprio operando. O `reset()` devolve o `SP` para `memorySize` e o `FP` para
 0, como qualquer outro pedaço de estado.
 
-`CALL`, `RET`, `ENTER` e `LEAVE` usarão essa mesma pilha; são uma etapa
-posterior do Advanced Mode, ainda não implementada.
+### Endereços de retorno e frames (etapa B)
+
+`CALL`, `RET`, `ENTER` e `LEAVE` empilham e desempilham na mesma pilha que
+`PUSH`/`POP` usam, através do mesmo `SP` e das mesmas verificações de
+overflow/underflow — mas eles movem `addressBytes` (`addressBits / 8`, 2 em
+todas as variantes) por vez, nunca `wordBytes`. Um endereço de retorno e um
+frame pointer salvo são **localizações**, não dados: sua largura segue o
+espaço de endereço de 16 bits em todas as variantes, o mesmo raciocínio que
+mantém `SP` e `FP` fora do register file com wrap pela palavra. `PUSH A` na
+PubVM-32 ainda move 4 bytes; `CALL` na PubVM-32 ainda move 2.
+
+`CALL addr`:
+```
+SP = SP - addressBytes
+MEM[SP] = PC_depois_do_CALL   ; o endereço da instrução logo após o CALL
+PC = addr
+```
+
+`RET`:
+```
+PC = MEM[SP]
+SP = SP + addressBytes
+```
+
+`ENTER` (prólogo clássico — ainda sem operando de tamanho de locals):
+```
+SP = SP - addressBytes
+MEM[SP] = FP
+FP = SP
+```
+
+`LEAVE` (o epílogo correspondente):
+```
+SP = FP                      ; descarta o que o frame empilhou acima do FP
+FP = MEM[SP]
+SP = SP + addressBytes
+```
+
+A pilha logo depois de um `CALL` seguido de um `ENTER`, endereços crescendo
+para baixo:
+
+```
+endereços maiores
+  [ endereço de retorno ]   <- SP logo após o CALL, FP ainda não se move
+  [ FP salvo             ]   <- SP, e o FP agora aponta aqui, logo após o ENTER
+   ...                          (futuras locals iriam abaixo desta linha)
+endereços menores
+```
+
+O `LEAVE` desfaz exatamente isso (`SP = FP` primeiro, então o que uma função
+chamada empilhou acima do próprio frame é descartado sem precisar
+desempilhar valor por valor), deixando `SP` de volta onde estava logo após o
+`CALL` — no endereço de retorno — então o `RET` seguinte desempilha
+exatamente isso.
+
+Uma chamada cujo `ENTER` nunca encontra um `LEAVE`, ou cujo `CALL` nunca
+encontra um `RET`, ainda assim não corrompe memória: todo
+`PUSH`/`POP`/`CALL`/`RET`/`ENTER`/`LEAVE` passa pela mesma verificação de
+limites do `PUSH`/`POP` acima, então uma cadeia de chamadas desbalanceada
+ainda cai na falha explícita de stack overflow em vez de crescer além do
+endereço 0.
 
 ## Flags
 

@@ -75,7 +75,7 @@ estar coberto pela suíte de testes.
 | 5B | UI mínima | **concluída** |
 | 6 | Debugger | **concluída** |
 | 7 | Camada educacional | **concluída** |
-| 8 | Advanced Mode — X, Y, SP, FP, stack, shifts, saltos extras | em andamento (etapa A: X, Y, SP, FP, PUSH, POP) |
+| 8 | Advanced Mode — X, Y, SP, FP, stack, shifts, saltos extras | em andamento (etapas A-B: X, Y, SP, FP, PUSH, POP, CALL, RET, ENTER, LEAVE) |
 | 9 | Modelo educacional do 8051 | não iniciada |
 | 10 | Modelo educacional do Cortex-M3 | não iniciada |
 | 11 | Comparação entre arquiteturas | não iniciada |
@@ -116,11 +116,17 @@ implementados como endereços ao lado do `PC` (não como registradores do
 tamanho da palavra — o valor inicial do `SP`, um endereço além do topo da
 memória, não cabe numa palavra de 8 ou 16 bits); `PUSH` e `POP` movem a
 pilha, com falhas explícitas de overflow/underflow, nunca um wrap silencioso.
-O painel STACK do debugger mostra SP/FP e as palavras que o PUSH escreveu,
-lidas da memória real através do SP. `CALL`, `RET`, `ENTER`, `LEAVE`, os
-shifts, rotates e os saltos condicionais restantes (`JN`, `JO`, `JNZ`,
-`JNC`) são etapas posteriores — o assembler reconhece esses mnemônicos e diz
-que pertencem ao Advanced Mode, em vez de reportá-los como desconhecidos.
+A etapa B também está concluída: `CALL` e `RET` empilham/desempilham o
+endereço de retorno, `ENTER` e `LEAVE` são o prólogo/epílogo clássico de
+salvar/restaurar o FP — tudo pela mesma pilha e as mesmas verificações de
+overflow/underflow do `PUSH`/`POP`, mas movendo `addressBytes` em vez de
+`wordBytes` (um endereço de retorno e um FP salvo são localizações, não
+dados — ver "Pilha" em [docs/pubvm.pt_BR.md](docs/pubvm.pt_BR.md)). O painel
+STACK do debugger mostra SP/FP e as palavras na pilha, lidas da memória real
+através do SP. Os shifts, rotates e os saltos condicionais restantes (`JN`,
+`JO`, `JNZ`, `JNC`) são uma etapa posterior — o assembler reconhece esses
+mnemônicos e diz que pertencem ao Advanced Mode, em vez de reportá-los como
+desconhecidos.
 
 Uma ausência é deliberada, não pendência:
 
