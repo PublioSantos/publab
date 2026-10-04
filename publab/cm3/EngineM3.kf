@@ -12,7 +12,7 @@ import publab.machine
 
 Int memorySizeM3() { return 65536 }
 
-record MachineStateM3(List<Long> registers, Long sp, Long lr, Int pc,
+record MachineStateM3(List<Long> registers, Long sp, Long lr, Long gpioa, Int pc,
                       Bool negative, Bool zero, Bool carry, Bool overflow,
                       Int cycles, MachineStatus status, String errorMessage,
                       List<String> output, String currentInstruction)
@@ -29,6 +29,9 @@ class MachineM3 {
     RegisterFile registers
     Long sp
     Long lr
+    // GPIOA (stage B): a plain readable/writable register, not electrically
+    // modelled (docs/cortex-m3.md, "Peripherals — stage B").
+    Long gpioa
     Memory memory
     ApsrM3 apsr
     Int pc
@@ -44,6 +47,7 @@ class MachineM3 {
         this.apsr = ApsrM3()
         this.sp = memorySizeM3() as Long
         this.lr = 0 as Long
+        this.gpioa = 0 as Long
         this.pc = 0
         this.cycles = 0
         this.status = MachineStatus.Ready
@@ -64,6 +68,7 @@ class MachineM3 {
         this.apsr.clear()
         this.sp = memorySizeM3() as Long
         this.lr = 0 as Long
+        this.gpioa = 0 as Long
         this.pc = 0
         this.cycles = 0
         this.output = emptyStringList()
@@ -111,12 +116,14 @@ class MachineM3 {
     Long regRead(Int id) {
         if (id == regSP()) { return this.sp }
         if (id == regLR()) { return this.lr }
+        if (id == regGPIOA()) { return this.gpioa }
         return this.registers.read(id)
     }
 
     void regWrite(Int id, Long value) {
         if (id == regSP()) { this.sp = wordWrap(value, widthM3()); return }
         if (id == regLR()) { this.lr = wordWrap(value, widthM3()); return }
+        if (id == regGPIOA()) { this.gpioa = wordWrap(value, widthM3()); return }
         this.registers.write(id, value)
     }
 
@@ -299,7 +306,7 @@ class MachineM3 {
     }
 
     MachineStateM3 snapshot() {
-        return MachineStateM3(this.registerSnapshot(), this.sp, this.lr, this.pc,
+        return MachineStateM3(this.registerSnapshot(), this.sp, this.lr, this.gpioa, this.pc,
             this.apsr.negative, this.apsr.zero, this.apsr.carry, this.apsr.overflow,
             this.cycles, this.status, this.errorMessage,
             copyStringList(this.output), this.currentInstructionText())

@@ -23,7 +23,7 @@ e não uma ferramenta de desenvolvimento para hardware ARM real.
 - Qualquer exportação futura para hardware real (fase 12) precisa declarar
   o MCU e o alvo explicitamente.
 
-## Situação: etapa A concluída
+## Situação: etapas A e B concluídas
 
 Esta página é o escopo completo para a fase 10, marcado item por item como
 arquitetura real ou abstração educacional (Regra 7 da especificação),
@@ -39,9 +39,9 @@ implementação segue em etapas, cada uma com seus próprios testes.
   `tests/cm3_asm_test.kf`, `tests/cm3_engine_test.kf` e
   `tests/cm3_golden_test.kf`. Ainda sem aba na UI, a mesma ordem que as
   outras duas máquinas seguiram.
-- **Etapa B** — uma porta GPIO, modelada do mesmo jeito que o `P0` do 8051:
-  um registrador comum de leitura/escrita, conceitual, sem endereço de
-  periférico inventado.
+- **Etapa B — concluída.** Uma porta GPIO (`GPIOA`), modelada do mesmo
+  jeito que o `P0` do 8051: um registrador comum de leitura/escrita,
+  conceitual, sem endereço de periférico inventado.
 
 ## Registradores
 
@@ -164,8 +164,8 @@ Mnemônicos reais do Thumb, um subconjunto deliberadamente pequeno:
 - **Contagem de ciclos, pipelining, latência de interrupção, comportamento
   elétrico** — nunca modelados, como dito no topo desta página.
 
-## Periféricos — etapa B
+## Periféricos — etapa B (concluída)
 
 | nome | modelo |
 |---|---|
-| porta GPIO (uma) | **conceitual** — baseada na forma geral de uma porta GPIO do Cortex-M3 (um registrador de dados diretamente legível e gravável), não no layout de registrador exato ou endereço de um fabricante específico, já que o próprio núcleo Cortex-M3 não define nenhum endereço de periférico — isso é inteiramente específico do fabricante (o motivo inteiro do aviso de abertura desta página dizer "nenhum endereço de periférico é inventado"). Modelada do mesmo jeito que o `P0` do 8051: um registrador comum, sem nenhuma nuance elétrica (força de drive, configuração de pull-up/down, multiplexação de função alternativa — tudo real em silício de verdade) modelada. |
+| `GPIOA` (uma porta GPIO) | **conceitual** — baseada na forma geral de uma porta GPIO do Cortex-M3 (um registrador de dados diretamente legível e gravável), não no layout de registrador exato ou endereço de um fabricante específico, já que o próprio núcleo Cortex-M3 não define nenhum endereço de periférico — isso é inteiramente específico do fabricante (o motivo inteiro do aviso de abertura desta página dizer "nenhum endereço de periférico é inventado"). Modelada do mesmo jeito que o `P0` do 8051: um registrador comum, sem nenhuma nuance elétrica (força de drive, configuração de pull-up/down, multiplexação de função alternativa — tudo real em silício de verdade) modelada. Nomeada como `SP`/`LR`, não como `R0`-`R12` — **não** é um registrador baixo, então `ADD`/`SUB`/`AND`/`ORR`/`EOR`/`CMP` a rejeitam exatamente como rejeitam `SP`/`LR`; só o `MOV` alcança ela nesta etapa. `GPIOB`, o `SysTick`, a `UART` e o `Timer` continuam reservados; nada além de uma porta está em escopo para a fase 10. |

@@ -25,8 +25,10 @@ test "SP and LR are named registers; PC is not reachable as an operand at all" {
     assert(isReservedNameM3("PC"))
 }
 
-test "GPIO, SysTick, UART, Timer and APSR/CONTROL are reserved — stage B/out of scope" {
-    assert(isReservedNameM3("GPIOA"))
+test "GPIOB, SysTick, UART, Timer and APSR/CONTROL are reserved; GPIOA is implemented (stage B)" {
+    assert(isReservedNameM3("GPIOB"), "only one GPIO port is in scope")
+    assert(lookupRegisterM3("GPIOA").found, "GPIOA is implemented, stage B")
+    assert(isReservedNameM3("GPIOA") == false)
     assert(isReservedNameM3("SYSTICK") && isReservedNameM3("UART") && isReservedNameM3("TIMER"))
     assert(isReservedNameM3("APSR") && isReservedNameM3("CONTROL"))
 }

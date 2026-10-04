@@ -18,6 +18,12 @@ Int regSP() { return 13 }
 Int regLR() { return 14 }
 Int regPC() { return 15 }
 
+// GPIOA (stage B): a plain readable/writable register, conceptual — no
+// peripheral address invented (docs/cortex-m3.md, "Peripherals — stage B").
+// Not a low register: like SP/LR, reachable via MOV but not via
+// ADD/SUB/AND/ORR/EOR/CMP, which stay restricted to R0-R12.
+Int regGPIOA() { return 16 }
+
 Bool isLowRegister(Int id) {
     return id >= 0 && id < lowRegisterCount()
 }
@@ -26,6 +32,7 @@ String registerNameM3(Int id) {
     if (id == regSP()) { return "SP" }
     if (id == regLR()) { return "LR" }
     if (id == regPC()) { return "PC" }
+    if (id == regGPIOA()) { return "GPIOA" }
     if (isLowRegister(id)) { return "R" + id }
     return "?"
 }
@@ -37,6 +44,7 @@ RegisterLookupM3 lookupRegisterM3(String name) {
     val upper = name.toUpperCase()
     if (upper == "SP") { return RegisterLookupM3(true, regSP()) }
     if (upper == "LR") { return RegisterLookupM3(true, regLR()) }
+    if (upper == "GPIOA") { return RegisterLookupM3(true, regGPIOA()) }
     if (upper.length >= 2 && upper.charAt(0) == 'R') {
         val digits = upper.substring(1, upper.length)
         var value = 0
@@ -60,7 +68,7 @@ RegisterLookupM3 lookupRegisterM3(String name) {
 Bool isReservedNameM3(String name) {
     val upper = name.toUpperCase()
     return upper == "PC" || upper == "PSR" || upper == "APSR" || upper == "CONTROL"
-        || upper == "GPIOA" || upper == "GPIOB" || upper == "SYSTICK"
+        || upper == "GPIOB" || upper == "SYSTICK"
         || upper == "UART" || upper == "TIMER"
 }
 

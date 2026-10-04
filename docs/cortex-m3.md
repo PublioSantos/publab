@@ -157,8 +157,8 @@ Real Thumb mnemonics, a deliberately small subset:
 - **Cycle counts, pipelining, interrupt latency, electrical behaviour** —
   never modelled, as stated at the top of this page.
 
-## Peripherals — stage B
+## Peripherals — stage B (done)
 
 | name | model |
 |---|---|
-| GPIO port (one) | **conceptual** — based on the general shape of a Cortex-M3 GPIO port (a data register that is directly readable and writable), not a specific manufacturer's exact register layout or address, since the Cortex-M3 core itself defines no peripheral addresses at all — those are entirely vendor-specific (the whole reason this page's opening disclaimer says "no peripheral address is invented"). Modelled the same way as the 8051's `P0`: a plain register, no electrical nuance (drive strength, pull-up/down configuration, alternate function muxing — all real on actual silicon) modelled. |
+| `GPIOA` (one GPIO port) | **conceptual** — based on the general shape of a Cortex-M3 GPIO port (a data register that is directly readable and writable), not a specific manufacturer's exact register layout or address, since the Cortex-M3 core itself defines no peripheral addresses at all — those are entirely vendor-specific (the whole reason this page's opening disclaimer says "no peripheral address is invented"). Modelled the same way as the 8051's `P0`: a plain register, no electrical nuance (drive strength, pull-up/down configuration, alternate function muxing — all real on actual silicon) modelled. Named like `SP`/`LR` rather than `R0`-`R12` — it is **not** a low register, so `ADD`/`SUB`/`AND`/`ORR`/`EOR`/`CMP` reject it exactly the way they reject `SP`/`LR`; only `MOV` reaches it in this stage. `GPIOB`, `SysTick`, the `UART` and `Timer` stay reserved; nothing beyond one port is in scope for phase 10. |

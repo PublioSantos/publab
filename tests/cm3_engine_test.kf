@@ -221,3 +221,40 @@ test "reset restores everything and the program runs again identically" {
     assert(statusName(m.status) == "READY")
     assert(m.run(100) == 5, "MOV, PUSH, BL, BX, HALT")
 }
+
+// --- GPIOA (stage B) ---------------------------------------------------------
+
+test "GPIOA is a plain readable/writable register, by name" {
+    assert(lookupRegisterM3("GPIOA").found)
+    assert(registerNameM3(regGPIOA()) == "GPIOA")
+    var m = MachineM3()
+    assert(m.gpioa == 0 as Long, "GPIOA resets to 0, like every other piece of state")
+}
+
+test "MOV GPIOA, #imm and MOV R0, GPIOA really move the value through the port" {
+    var m = loadedM3("MOV GPIOA, #0xFF\nMOV R0, GPIOA\nHALT\n")
+    m.run(100)
+    assert(statusName(m.status) == "HALTED")
+    assert(m.gpioa == 0xFF as Long)
+    assert(m.regRead(0) == 0xFF as Long, "whatever was last written to GPIOA is what comes back")
+}
+
+test "GPIOA is not a low register — ADD/SUB/AND/ORR/EOR/CMP reject it, like SP/LR" {
+    val r = assembleSourceM3("ADD R0, GPIOA, #1\nHALT\n")
+    assert(r.ok() == false)
+    assert(r.diagnostics().get(0).code() == "M3014")
+}
+
+test "reset() puts GPIOA back to 0" {
+    var m = loadedM3("MOV GPIOA, #123\nHALT\n")
+    m.run(100)
+    assert(m.gpioa == 123 as Long)
+    m.reset()
+    assert(m.gpioa == 0 as Long)
+}
+
+test "GPIOB, SysTick, UART and Timer are still reserved — only GPIOA is implemented" {
+    val r = assembleSourceM3("MOV GPIOB, #1\nHALT\n")
+    assert(r.ok() == false)
+    assert(r.diagnostics().get(0).code() == "M3015")
+}
