@@ -1,0 +1,144 @@
+package tests
+
+import publab.i8051
+
+// Lexer, parser and assembler for the 8051 module (phase 9, stage A).
+
+test "lexer: idents, numbers, comma, colon, hash and comments" {
+    val r = lexSource8051("MOV A, #5 ; comment\nloop:\nJZ loop\n")
+    val kinds = listOf(r.tokens().get(0).kind(), r.tokens().get(1).kind(),
+        r.tokens().get(2).kind(), r.tokens().get(3).kind(), r.tokens().get(4).kind())
+    assert(kinds.get(0) == "ident" && r.tokens().get(0).text() == "MOV")
+    assert(kinds.get(1) == "ident" && r.tokens().get(1).text() == "A")
+    assert(kinds.get(2) == "comma")
+    assert(kinds.get(3) == "hash")
+    assert(kinds.get(4) == "number" && r.tokens().get(4).value() == 5 as Long)
+    assert(r.diagnostics().size == 0)
+}
+
+test "lexer: hex and binary numbers, and a malformed one" {
+    val ok = lexSource8051("0x2A 0b101 30")
+    assert(ok.tokens().get(0).value() == 42 as Long)
+    assert(ok.tokens().get(1).value() == 5 as Long)
+    assert(ok.tokens().get(2).value() == 30 as Long)
+    val bad = lexSource8051("0x2G")
+    assert(bad.diagnostics().size == 1)
+    assert(bad.diagnostics().get(0).code() == "I51011")
+}
+
+test "lexer: an unexpected character is reported, not silently dropped" {
+    val r = lexSource8051("MOV A, $5")
+    assert(r.diagnostics().size == 1)
+    assert(r.diagnostics().get(0).code() == "I51010")
+}
+
+ParseResult8051 parseSource8051(String source) {
+    return parseTokens8051(lexSource8051(source).tokens())
+}
+
+test "parser: MOV's four forms" {
+    val regImm = parseSource8051("MOV A, #5")
+    assert(formFromOperands8051(regImm.instructions().get(0).operands()).form() == formRegImm8051())
+    val regReg = parseSource8051("MOV A, R0")
+    assert(formFromOperands8051(regReg.instructions().get(0).operands()).form() == formRegReg8051())
+    val regDirect = parseSource8051("MOV A, 30")
+    assert(formFromOperands8051(regDirect.instructions().get(0).operands()).form() == formRegDirect8051())
+    val directReg = parseSource8051("MOV 30, A")
+    assert(formFromOperands8051(directReg.instructions().get(0).operands()).form() == formDirectReg8051())
+}
+
+test "parser: a label as a jump target, and a reg-only form" {
+    val jump = parseSource8051("JZ loop")
+    assert(formFromOperands8051(jump.instructions().get(0).operands()).form() == formAddr8051())
+    assert(jump.instructions().get(0).operands().get(0).kind() == "label")
+    val reg = parseSource8051("INC R3")
+    assert(formFromOperands8051(reg.instructions().get(0).operands()).form() == formReg8051())
+}
+
+test "parser: a label definition, with and without an instruction on the same line" {
+    val r = parseSource8051("loop:\nINC A\nJZ loop\n")
+    assert(r.labels().size == 1)
+    assert(r.labels().get(0).name() == "loop")
+    assert(r.labels().get(0).instructionIndex() == 0)
+}
+
+test "parser: reserved names are rejected, never read as a label" {
+    val r = parseSource8051("MOV A, DPTR")
+    assert(r.diagnostics().size == 1)
+    assert(r.diagnostics().get(0).code() == "I51015")
+}
+
+test "parser: '#' with no number after it is a clean error" {
+    val r = parseSource8051("MOV A, #\n")
+    assert(r.diagnostics().size == 1)
+    assert(r.diagnostics().get(0).code() == "I51012")
+}
+
+// --- assembler -----------------------------------------------------------
+
+test "assembler: the golden MOV/ADD program encodes and runs" {
+    val assembled = assembleSource8051("MOV A, #10\nMOV R0, #20\nADD A, R0\nHALT\n")
+    assert(assembled.ok(), renderDiagnostics8051(assembled.diagnostics(), "en"))
+    assert(assembled.byteCount() == 10, "3+3+3+1 bytes")
+}
+
+test "assembler: an unknown instruction is reported as unknown" {
+    val r = assembleSource8051("FOO A, #1\nHALT\n")
+    assert(r.ok() == false)
+    assert(r.diagnostics().get(0).code() == "I51001")
+}
+
+test "assembler: ADD/ADDC/SUBB/ANL/ORL/XRL must target A, like real hardware" {
+    val r = assembleSource8051("ADD R0, #1\nHALT\n")
+    assert(r.ok() == false)
+    assert(r.diagnostics().get(0).code() == "I51014")
+    val ok = assembleSource8051("ADD A, R0\nHALT\n")
+    assert(ok.ok(), renderDiagnostics8051(ok.diagnostics(), "en"))
+}
+
+test "assembler: an immediate that does not fit 8 bits is rejected" {
+    val r = assembleSource8051("MOV A, #300\nHALT\n")
+    assert(r.ok() == false)
+    assert(r.diagnostics().get(0).code() == "I51005")
+}
+
+test "assembler: a direct address outside Internal Data Memory is rejected" {
+    val r = assembleSource8051("MOV A, 200\nHALT\n")
+    assert(r.ok() == false)
+    assert(r.diagnostics().get(0).code() == "I51006")
+}
+
+test "assembler: an undefined label is reported, with the line to fix it" {
+    val r = assembleSource8051("JZ nowhere\nHALT\n")
+    assert(r.ok() == false)
+    assert(r.diagnostics().get(0).code() == "I51007")
+}
+
+test "assembler: a duplicate label names the first definition" {
+    val r = assembleSource8051("loop:\nHALT\nloop:\nHALT\n")
+    assert(r.ok() == false)
+    assert(r.diagnostics().get(0).code() == "I51008")
+    assert(renderDiagnostic8051(r.diagnostics().get(0), "en").contains("line 1"))
+}
+
+test "assembler: wrong operand count names what was expected" {
+    val r = assembleSource8051("MOV A\nHALT\n")
+    assert(r.ok() == false)
+    assert(r.diagnostics().get(0).code() == "I51003")
+}
+
+test "assembler: labels resolve to real addresses, a forward jump included" {
+    val r = assembleSource8051("JZ skip\nHALT\nskip:\nHALT\n")
+    assert(r.ok(), renderDiagnostics8051(r.diagnostics(), "en"))
+    // JZ (3 bytes) then HALT (1 byte) = skip is at address 4.
+    assert(r.symbols().get(0).name() == "skip")
+    assert(r.symbols().get(0).address() == 4)
+}
+
+test "assembler: diagnostics render in English and Portuguese" {
+    val r = assembleSource8051("FOO A\nHALT\n")
+    val en = renderDiagnostic8051(r.diagnostics().get(0), "en")
+    val pt = renderDiagnostic8051(r.diagnostics().get(0), "pt")
+    assert(en.contains("unknown instruction"), en)
+    assert(pt.contains("instrução desconhecida"), pt)
+}

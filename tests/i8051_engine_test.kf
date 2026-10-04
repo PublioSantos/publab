@@ -1,0 +1,199 @@
+package tests
+
+import publab.machine
+import publab.i8051
+
+// Phase 9 stage A — the 8051 engine, end to end. Real semantics throughout
+// (docs/8051.md): no persistent Z/N flags, SP growing upward, R0-R7 aliased
+// into whichever Internal Data Memory bank PSW selects.
+
+Machine8051 loaded8051(String source) {
+    val assembled = assembleSource8051(source)
+    assert(assembled.ok(), renderDiagnostics8051(assembled.diagnostics(), "en"))
+    var m = Machine8051()
+    m.load(assembled.image())
+    return m
+}
+
+test "a loaded machine is READY with the program in Code Memory" {
+    var m = loaded8051("MOV A, #5\nHALT\n")
+    assert(statusName(m.status) == "READY")
+    assert(m.pc == 0)
+    assert(m.sp == spReset8051(), "SP resets to 0x07, like real hardware")
+    assert(m.codeMemory.readByte(2) == 5, "the immediate really is in Code Memory")
+}
+
+test "MOV's four forms all really move the byte" {
+    var m = loaded8051("MOV A, #42\nMOV R0, A\nMOV 30, A\nMOV B, 30\nHALT\n")
+    m.run(100)
+    assert(statusName(m.status) == "HALTED")
+    assert(m.a == 42 as Long)
+    assert(m.regRead(firstBankedRegister()) == 42 as Long, "R0 got A's value")
+    assert(m.internalData.readByte(30) == 42, "direct address 30 got A's value")
+    assert(m.b == 42 as Long, "B read back from direct address 30")
+}
+
+test "ADD sets C/AC/OV; ADDC folds in the incoming carry" {
+    var m = loaded8051("MOV A, #250\nMOV R0, #20\nADD A, R0\nHALT\n")
+    m.step()
+    m.step()
+    m.step()
+    assert(m.a == 14 as Long, "250+20=270 wraps to 14 in 8 bits")
+    assert(m.psw.carry)
+}
+
+test "SUBB always borrows through the carry, like real hardware's only subtract" {
+    var m = loaded8051("MOV A, #3\nMOV R0, #10\nSUBB A, R0\nHALT\n")
+    m.run(100)
+    assert(m.a == 249 as Long, "3-10 wraps to 249")
+    assert(m.psw.carry, "the borrow sets carry")
+}
+
+test "ANL/ORL/XRL change A but leave C/AC/OV exactly as they were" {
+    var m = loaded8051(
+        "MOV A, #250\nMOV R0, #20\nADD A, R0\n" // sets carry
+        + "MOV A, #0xF0\nMOV R0, #0x0F\nANL A, R0\nHALT\n")
+    m.step()
+    m.step()
+    m.step()
+    assert(m.psw.carry, "ADD set carry")
+    val carryBefore = m.psw.carry
+    m.step()
+    m.step()
+    m.step()
+    assert(m.a == 0 as Long, "0xF0 & 0x0F == 0")
+    assert(m.psw.carry == carryBefore, "ANL did not touch carry")
+}
+
+test "INC/DEC wrap at the byte boundary and touch no flag" {
+    var m = loaded8051("MOV A, #0xFF\nINC A\nHALT\n")
+    m.step()
+    val carryBefore = m.psw.carry
+    m.step()
+    assert(m.a == 0 as Long, "0xFF + 1 wraps to 0")
+    assert(m.psw.carry == carryBefore, "INC never touches carry")
+}
+
+// --- the real difference from PubVM: JZ/JNZ test A directly ---------------
+
+test "JZ/JNZ test the live value of A, not a flag a previous instruction left" {
+    // MOV never sets any flag on real hardware (or in this model) — so if
+    // JZ/JNZ used a flag, this would never jump. They must read A itself.
+    var taken = loaded8051("MOV A, #0\nJZ there\nHALT\nthere:\nHALT\n")
+    taken.run(100)
+    assert(statusName(taken.status) == "HALTED")
+    assert(taken.cycles == 3, "MOV, JZ (jumped), the SECOND HALT")
+
+    var notTaken = loaded8051("MOV A, #1\nJZ there\nHALT\nthere:\nHALT\n")
+    notTaken.run(100)
+    assert(notTaken.cycles == 3, "MOV, JZ (not taken), the FIRST HALT")
+}
+
+test "JC/JNC test the carry flag, same as PubVM's JC" {
+    var m = loaded8051("MOV A, #250\nMOV R0, #20\nADD A, R0\nJC there\nHALT\nthere:\nHALT\n")
+    m.run(100)
+    assert(statusName(m.status) == "HALTED")
+    assert(m.cycles == 5, "MOV, MOV, ADD, JC (jumped), the SECOND HALT")
+}
+
+// --- the stack grows UPWARD, the opposite of PubVM --------------------------
+
+test "PUSH increments SP first, then writes; POP reads, then decrements" {
+    var m = loaded8051("MOV A, #99\nPUSH A\nHALT\n")
+    m.step()
+    assert(m.sp == spReset8051())
+    m.step()
+    assert(m.sp == spReset8051() + 1, "SP moved UP by one")
+    assert(m.internalData.readByte(m.sp) == 99)
+}
+
+test "multiple PUSH/POP round-trip, LIFO, growing upward the whole time" {
+    var m = loaded8051(
+        "MOV A, #1\nMOV R0, #2\nMOV R1, #3\n"
+        + "PUSH A\nPUSH R0\nPUSH R1\n"
+        + "POP A\nPOP R0\nPOP R1\nHALT\n")
+    m.run(100)
+    assert(statusName(m.status) == "HALTED")
+    assert(m.sp == spReset8051(), "balanced PUSH/POP returns SP to reset")
+    // LIFO: R1 (pushed last, value 3) is popped first, into A.
+    // Then R0's own old value (2) comes back into R0, and A's old value
+    // (1) ends up in R1.
+    assert(m.a == 3 as Long)
+    assert(m.regRead(firstBankedRegister()) == 2 as Long)
+    assert(m.regRead(firstBankedRegister() + 1) == 1 as Long)
+}
+
+test "stack overflow and underflow are real faults, not silent corruption" {
+    var m = loaded8051("PUSH A\nHALT\n")
+    m.sp = internalDataSize8051() - 1
+    m.step()
+    assert(statusName(m.status) == "ERROR")
+    assert(m.errorMessage.contains("overflow"), m.errorMessage)
+
+    var empty = loaded8051("POP A\nHALT\n")
+    assert(empty.sp == spReset8051())
+    empty.step()
+    assert(statusName(empty.status) == "ERROR")
+    assert(empty.errorMessage.contains("underflow"), empty.errorMessage)
+}
+
+// --- CALL/RET: the return address is pushed low-byte-then-high-byte -------
+
+test "CALL pushes the return address and jumps; RET pops it and returns" {
+    var m = loaded8051("CALL sub\nPRINT A\nHALT\nsub:\nMOV A, #7\nRET\n")
+    m.run(100)
+    assert(statusName(m.status) == "HALTED")
+    assert(m.output.get(0) == "7", "execution really returned to PRINT A, after RET")
+}
+
+test "nested CALL/RET unwind in the right order, LIFO like PUSH/POP" {
+    var m = loaded8051(
+        "MOV A, #1\nCALL outer\nHALT\n"
+        + "outer:\nMOV A, #2\nCALL inner\nMOV A, #3\nRET\n"
+        + "inner:\nMOV A, #9\nRET\n")
+    m.run(100)
+    assert(statusName(m.status) == "HALTED")
+    assert(m.sp == spReset8051(), "both CALLs were matched by a RET")
+    assert(m.a == 3 as Long, "outer overwrites A after inner returns, then RET")
+}
+
+// --- register banks really alias Internal Data Memory -----------------------
+
+test "switching PSW.RS1:RS0 changes which memory R0-R7 reach" {
+    var m = loaded8051("MOV R0, #11\nHALT\n")
+    m.step()
+    assert(m.internalData.readByte(0) == 11, "bank 0: R0 is address 0")
+    m.psw.rs0 = true // bank 1
+    assert(m.regRead(firstBankedRegister()) == 0 as Long, "bank 1's R0 (address 8) was never written")
+    m.regWrite(firstBankedRegister(), 22 as Long)
+    assert(m.internalData.readByte(8) == 22, "bank 1: R0 is address 8")
+    assert(m.internalData.readByte(0) == 11, "bank 0's byte is untouched")
+}
+
+// --- PRINT/HALT (educational, not real 8051) --------------------------------
+
+test "PRINT outputs the register's decimal value; HALT really stops" {
+    var m = loaded8051("MOV A, #200\nPRINT A\nHALT\nPRINT A\n")
+    m.run(100)
+    assert(statusName(m.status) == "HALTED")
+    assert(m.output.size == 1 && m.output.get(0) == "200",
+        "the PRINT after HALT never ran")
+}
+
+test "a faulted machine does not keep executing" {
+    var m = loaded8051("POP A\nHALT\n")
+    assert(m.step() == false, "underflow stops execution")
+    assert(m.step() == false, "a faulted machine never steps again")
+}
+
+test "reset restores everything, and the program runs again identically" {
+    var m = loaded8051("MOV A, #5\nPUSH A\nCALL sub\nHALT\nsub:\nRET\n")
+    m.run(100)
+    assert(statusName(m.status) == "HALTED")
+    m.reset()
+    assert(m.a == 0 as Long)
+    assert(m.sp == spReset8051())
+    assert(m.psw.carry == false)
+    assert(statusName(m.status) == "READY")
+    assert(m.run(100) == 5, "CALL, RET, PUSH is before CALL — MOV,PUSH,CALL,RET,HALT")
+}

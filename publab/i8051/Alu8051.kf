@@ -1,0 +1,75 @@
+package publab.i8051
+
+import publab.machine
+
+// The 8051 ALU. Fixed 8-bit width always — there is no word-size parameter
+// the way PubVM has one, because the real chip has no variants.
+//
+// Unlike PubVM's AluResult, there is no zero/negative pair: the real 8051
+// PSW has no Z or N flag at all (docs/8051.md, "PSW and flags"). What it has
+// instead is AC (auxiliary carry, the half-carry out of bit 3) and P
+// (parity of A), and P is never produced here — it depends on which
+// register the caller just wrote, not on the arithmetic itself, so it is
+// computed on demand by `parityOf`, not stored as ALU output.
+
+Int width8051() { return 8 }
+
+record AluResult8051(Long value, Bool carry, Bool auxCarry, Bool overflow)
+
+Bool halfCarryOut(Long x, Long y, Long carryIn) {
+    return ((x & (15 as Long)) + (y & (15 as Long)) + carryIn) > (15 as Long)
+}
+
+AluResult8051 alu8051Add(Long a, Long b, Long carryIn) {
+    val x = wordWrap(a, width8051())
+    val y = wordWrap(b, width8051())
+    val raw = x + y + carryIn
+    val stored = wordWrap(raw, width8051())
+    val carry = raw > wordMask(width8051())
+    val ac = halfCarryOut(x, y, carryIn)
+    val signA = wordIsNegative(x, width8051())
+    val signB = wordIsNegative(y, width8051())
+    val signR = wordIsNegative(stored, width8051())
+    val overflow = (signA == signB) && (signR != signA)
+    return AluResult8051(stored, carry, ac, overflow)
+}
+
+// SUBB: subtract with borrow. Real 8051 has no plain SUB — every
+// subtraction goes through the carry flag as a borrow-in, the same way
+// ADDC always adds the carry in.
+AluResult8051 alu8051Subb(Long a, Long b, Long borrowIn) {
+    val x = wordWrap(a, width8051())
+    val y = wordWrap(b, width8051())
+    val stored = wordWrap(x - y - borrowIn, width8051())
+    val borrow = x < (y + borrowIn)
+    val ac = (x & (15 as Long)) < ((y & (15 as Long)) + borrowIn)
+    val signA = wordIsNegative(x, width8051())
+    val signB = wordIsNegative(y, width8051())
+    val signR = wordIsNegative(stored, width8051())
+    val overflow = (signA != signB) && (signR != signA)
+    return AluResult8051(stored, borrow, ac, overflow)
+}
+
+// ANL/ORL/XRL touch no flag at all on real hardware (docs/8051.md's
+// flags-touched table) — the caller keeps whatever C/AC/OV already held;
+// only the stored value is new.
+Long alu8051And(Long a, Long b) { return wordWrap(a, width8051()) & wordWrap(b, width8051()) }
+Long alu8051Or(Long a, Long b) { return wordWrap(a, width8051()) | wordWrap(b, width8051()) }
+Long alu8051Xor(Long a, Long b) { return wordWrap(a, width8051()) ^ wordWrap(b, width8051()) }
+
+Long alu8051Inc(Long a) { return wordWrap(a + (1 as Long), width8051()) }
+Long alu8051Dec(Long a) { return wordWrap(a - (1 as Long), width8051()) }
+
+// The parity flag: the number of set bits in A, modulo 2. Recomputed
+// wherever A changes — never stored as a flag an instruction "sets".
+Bool parityOf(Long a) {
+    var v = wordWrap(a, width8051())
+    var ones = 0
+    var i = 0
+    while (i < width8051()) {
+        if ((v & (1 as Long)) == (1 as Long)) { ones = ones + 1 }
+        v = v >>> 1
+        i = i + 1
+    }
+    return (ones % 2) == 1
+}

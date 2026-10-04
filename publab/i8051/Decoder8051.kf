@@ -1,0 +1,76 @@
+package publab.i8051
+
+import publab.machine
+
+// Fetch and decode, from Code Memory. Mirrors PubVM's Decoder.kf: the
+// assembler encodes from the same opcode table this reads, so the two
+// cannot disagree.
+
+record Decoded8051(Int opcode, String mnemonic, Int form, Int reg1, Int reg2,
+                   Long imm, Int direct, Int address, Int length)
+
+void decodeFault8051(Int opcode, Int pc) {
+    throw "unknown opcode 0x" + toHex(opcode as Long, 2) + " at code address 0x" + toHex(pc as Long, 4)
+}
+
+Decoded8051 decodeAt8051(Memory code, Int pc) {
+    val opcode = code.readByte(pc)
+    val look = lookupOpcode8051(opcode)
+    if (!look.found()) { decodeFault8051(opcode, pc) }
+    val form = look.form()
+    val length = instructionLength8051(form)
+    var reg1 = 0
+    var reg2 = 0
+    var imm: Long = 0 as Long
+    var direct = 0
+    var address = 0
+    if (form == formReg8051()) {
+        reg1 = code.readByte(pc + 1)
+    }
+    if (form == formRegImm8051()) {
+        reg1 = code.readByte(pc + 1)
+        imm = code.readByte(pc + 2) as Long
+    }
+    if (form == formRegReg8051()) {
+        reg1 = code.readByte(pc + 1)
+        reg2 = code.readByte(pc + 2)
+    }
+    if (form == formRegDirect8051()) {
+        reg1 = code.readByte(pc + 1)
+        direct = code.readByte(pc + 2)
+    }
+    if (form == formDirectReg8051()) {
+        direct = code.readByte(pc + 1)
+        reg1 = code.readByte(pc + 2)
+    }
+    if (form == formAddr8051()) {
+        address = (code.readWord(pc + 1, 2) as Int)
+    }
+    return Decoded8051(opcode, look.mnemonic(), form, reg1, reg2, imm, direct, address, length)
+}
+
+String disassemble8051(Decoded8051 d) {
+    val form = d.form()
+    if (form == formNone8051()) {
+        return d.mnemonic()
+    }
+    if (form == formReg8051()) {
+        return d.mnemonic() + " " + registerName8051(d.reg1())
+    }
+    if (form == formRegImm8051()) {
+        return d.mnemonic() + " " + registerName8051(d.reg1()) + ", #" + d.imm()
+    }
+    if (form == formRegReg8051()) {
+        return d.mnemonic() + " " + registerName8051(d.reg1()) + ", " + registerName8051(d.reg2())
+    }
+    if (form == formRegDirect8051()) {
+        return d.mnemonic() + " " + registerName8051(d.reg1()) + ", 0x" + toHex(d.direct() as Long, 2)
+    }
+    if (form == formDirectReg8051()) {
+        return d.mnemonic() + " 0x" + toHex(d.direct() as Long, 2) + ", " + registerName8051(d.reg1())
+    }
+    if (form == formAddr8051()) {
+        return d.mnemonic() + " 0x" + toHex(d.address() as Long, 4)
+    }
+    return d.mnemonic()
+}

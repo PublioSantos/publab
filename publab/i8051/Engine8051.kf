@@ -1,0 +1,334 @@
+package publab.i8051
+
+import publab.machine
+
+// The 8051 execution engine (stage A). Mirrors PubVM's Engine.kf in shape —
+// one real machine, `step`/`run`/`reset`, a `snapshot()` the UI and tests
+// read — but the semantics are the real 8051's, not PubVM's: no Z/N flags,
+// SP growing upward, R0-R7 aliased into Internal Data Memory through the
+// active register bank. See docs/8051.md for what is real and what is this
+// model's own simplification, item by item.
+
+Int codeMemorySize8051() { return 4096 }
+Int internalDataSize8051() { return 128 }
+
+// Real hardware resets SP to 0x07: register bank 0 occupies addresses
+// 0x00-0x07, so the stack starts one byte above it and the first PUSH never
+// touches a register's own byte.
+Int spReset8051() { return 7 }
+
+record MachineState8051(Int a, Int b, List<Int> r, Int pc, Int sp,
+                        Bool carry, Bool auxCarry, Bool overflow, Bool parity,
+                        Bool f0, Int bank,
+                        Int cycles, MachineStatus status, String errorMessage,
+                        List<String> output, String currentInstruction)
+
+void stackOverflowFault8051() {
+    throw "stack overflow: Internal Data Memory has no room left above SP"
+}
+
+void stackUnderflowFault8051() {
+    throw "stack underflow: nothing has been pushed"
+}
+
+void codeOverflowFault8051(Int size) {
+    throw "the program needs more than " + size + " bytes of Code Memory"
+}
+
+class Machine8051 {
+    Long a
+    Long b
+    Memory internalData
+    Memory codeMemory
+    Psw8051 psw
+    Int pc
+    Int sp
+    Int cycles
+    MachineStatus status
+    String errorMessage
+    List<String> output
+    List<Int> image
+
+    constructor() {
+        this.a = 0 as Long
+        this.b = 0 as Long
+        this.internalData = Memory(internalDataSize8051())
+        this.codeMemory = Memory(codeMemorySize8051())
+        this.psw = Psw8051()
+        this.pc = 0
+        this.sp = spReset8051()
+        this.cycles = 0
+        this.status = MachineStatus.Ready
+        this.errorMessage = ""
+        this.output = emptyStringList()
+        this.image = emptyIntList()
+    }
+
+    void load(List<Int> image) {
+        this.image = image
+        this.reset()
+    }
+
+    void reset() {
+        this.internalData.clear()
+        this.codeMemory.clear()
+        this.codeMemory.loadImage(this.image, 0)
+        this.a = 0 as Long
+        this.b = 0 as Long
+        this.psw.clear()
+        this.pc = 0
+        this.sp = spReset8051()
+        this.cycles = 0
+        this.output = emptyStringList()
+        this.errorMessage = ""
+        this.status = MachineStatus.Ready
+    }
+
+    Bool canRun() {
+        return this.status != MachineStatus.Halted && this.status != MachineStatus.Error
+    }
+
+    Bool step() {
+        if (!this.canRun()) { return false }
+        val executed = this.executeNext()
+        if (executed && this.status == MachineStatus.Running) {
+            this.status = MachineStatus.Paused
+        }
+        return executed
+    }
+
+    Int run(Int maxCycles) {
+        var executed = 0
+        while (this.canRun() && executed < maxCycles) {
+            if (!this.executeNext()) { return executed }
+            executed = executed + 1
+        }
+        if (this.canRun()) { this.status = MachineStatus.Paused }
+        return executed
+    }
+
+    void halt() {
+        this.status = MachineStatus.Halted
+    }
+
+    Bool executeNext() {
+        this.status = MachineStatus.Running
+        try {
+            val decoded = decodeAt8051(this.codeMemory, this.pc)
+            this.execute(decoded)
+            this.cycles = this.cycles + 1
+            return true
+        } catch (String fault) {
+            this.status = MachineStatus.Error
+            this.errorMessage = fault
+            return false
+        }
+    }
+
+    // R0-R7 are the active bank's first 8 bytes of Internal Data Memory
+    // (docs/8051.md) — there is no separate storage for them.
+    Int bankedAddress(Int id) {
+        return bankedRegisterAddress(id, activeBank(this.psw.rs1, this.psw.rs0))
+    }
+
+    Long regRead(Int id) {
+        if (id == regA()) { return this.a }
+        if (id == regB()) { return this.b }
+        return this.internalData.readByte(this.bankedAddress(id)) as Long
+    }
+
+    void regWrite(Int id, Long value) {
+        val stored = wordWrap(value, width8051())
+        if (id == regA()) { this.a = stored; return }
+        if (id == regB()) { this.b = stored; return }
+        this.internalData.writeByte(this.bankedAddress(id), stored as Int)
+    }
+
+    // PUSH increments SP first, then writes — the stack grows UPWARD,
+    // opposite of PubVM's (docs/8051.md, "Registers": SP).
+    void pushByte(Int value) {
+        val newSp = this.sp + 1
+        if (newSp > internalDataSize8051() - 1) { stackOverflowFault8051() }
+        this.sp = newSp
+        this.internalData.writeByte(this.sp, value & 255)
+    }
+
+    // POP reads at SP, then decrements. SP == spReset8051() means nothing
+    // has been pushed, since only PUSH/POP/CALL/RET move SP in stage A.
+    Int popByte() {
+        if (this.sp <= spReset8051()) { stackUnderflowFault8051() }
+        val value = this.internalData.readByte(this.sp)
+        this.sp = this.sp - 1
+        return value
+    }
+
+    Long carryInOrZero() {
+        if (this.psw.carry) { return 1 as Long }
+        return 0 as Long
+    }
+
+    void applyArith(AluResult8051 r) {
+        this.psw.carry = r.carry()
+        this.psw.auxCarry = r.auxCarry()
+        this.psw.overflow = r.overflow()
+    }
+
+    // The second operand of an ALU instruction: an immediate or another
+    // register, by form — same shape as PubVM's operandValue.
+    Long operandValue(Decoded8051 d) {
+        if (d.form() == formRegImm8051()) { return d.imm() }
+        return this.regRead(d.reg2())
+    }
+
+    void execute(Decoded8051 d) {
+        val next = this.pc + d.length()
+        val mnemonic = d.mnemonic()
+
+        if (mnemonic == "HALT") {
+            this.status = MachineStatus.Halted
+            return
+        }
+        if (mnemonic == "MOV") {
+            if (d.form() == formRegImm8051()) { this.regWrite(d.reg1(), d.imm()) }
+            if (d.form() == formRegReg8051()) { this.regWrite(d.reg1(), this.regRead(d.reg2())) }
+            if (d.form() == formRegDirect8051()) {
+                this.regWrite(d.reg1(), this.internalData.readByte(d.direct()) as Long)
+            }
+            if (d.form() == formDirectReg8051()) {
+                this.internalData.writeByte(d.direct(), (this.regRead(d.reg1()) as Int))
+            }
+            this.pc = next
+            return
+        }
+        if (mnemonic == "ADD") {
+            val r = alu8051Add(this.a, this.operandValue(d), 0 as Long)
+            this.applyArith(r)
+            this.a = r.value()
+            this.pc = next
+            return
+        }
+        if (mnemonic == "ADDC") {
+            val r = alu8051Add(this.a, this.operandValue(d), this.carryInOrZero())
+            this.applyArith(r)
+            this.a = r.value()
+            this.pc = next
+            return
+        }
+        if (mnemonic == "SUBB") {
+            val r = alu8051Subb(this.a, this.operandValue(d), this.carryInOrZero())
+            this.applyArith(r)
+            this.a = r.value()
+            this.pc = next
+            return
+        }
+        if (mnemonic == "ANL") {
+            this.a = alu8051And(this.a, this.operandValue(d))
+            this.pc = next
+            return
+        }
+        if (mnemonic == "ORL") {
+            this.a = alu8051Or(this.a, this.operandValue(d))
+            this.pc = next
+            return
+        }
+        if (mnemonic == "XRL") {
+            this.a = alu8051Xor(this.a, this.operandValue(d))
+            this.pc = next
+            return
+        }
+        if (mnemonic == "INC") {
+            this.regWrite(d.reg1(), alu8051Inc(this.regRead(d.reg1())))
+            this.pc = next
+            return
+        }
+        if (mnemonic == "DEC") {
+            this.regWrite(d.reg1(), alu8051Dec(this.regRead(d.reg1())))
+            this.pc = next
+            return
+        }
+        if (mnemonic == "JZ") {
+            if (this.a == (0 as Long)) { this.pc = d.address() } else { this.pc = next }
+            return
+        }
+        if (mnemonic == "JNZ") {
+            if (this.a != (0 as Long)) { this.pc = d.address() } else { this.pc = next }
+            return
+        }
+        if (mnemonic == "JC") {
+            if (this.psw.carry) { this.pc = d.address() } else { this.pc = next }
+            return
+        }
+        if (mnemonic == "JNC") {
+            if (!this.psw.carry) { this.pc = d.address() } else { this.pc = next }
+            return
+        }
+        if (mnemonic == "JMP") {
+            this.pc = d.address()
+            return
+        }
+        if (mnemonic == "CALL") {
+            // Real convention: push the low byte, then the high byte, so
+            // the high byte ends up on top — RET pops them in reverse.
+            this.pushByte(next & 255)
+            this.pushByte((((next as Long) >>> 8) as Int) & 255)
+            this.pc = d.address()
+            return
+        }
+        if (mnemonic == "RET") {
+            val high: Long = this.popByte() as Long
+            val low: Long = this.popByte() as Long
+            this.pc = (((high << 8) | low) as Int)
+            return
+        }
+        if (mnemonic == "PUSH") {
+            this.pushByte(this.regRead(d.reg1()) as Int)
+            this.pc = next
+            return
+        }
+        if (mnemonic == "POP") {
+            this.regWrite(d.reg1(), this.popByte() as Long)
+            this.pc = next
+            return
+        }
+        if (mnemonic == "PRINT") {
+            // Educational, not a real 8051 instruction — same justification
+            // as PubVM's PRINT (docs/8051.md).
+            this.output.add("" + this.regRead(d.reg1()))
+            this.pc = next
+            return
+        }
+        this.unknownMnemonic(mnemonic)
+    }
+
+    void unknownMnemonic(String mnemonic) {
+        throw "instruction decoded but not implemented by the 8051 engine: " + mnemonic
+    }
+
+    String currentInstructionText() {
+        try {
+            val d = decodeAt8051(this.codeMemory, this.pc)
+            return disassemble8051(d)
+        } catch (String fault) {
+            return "?"
+        }
+    }
+
+    List<Int> registerBankSnapshot() {
+        var values: List<Int> = listOf()
+        var i = firstBankedRegister()
+        while (i <= lastBankedRegister()) {
+            values.add(this.regRead(i) as Int)
+            i = i + 1
+        }
+        return values
+    }
+
+    MachineState8051 snapshot() {
+        return MachineState8051(this.a as Int, this.b as Int, this.registerBankSnapshot(),
+            this.pc, this.sp,
+            this.psw.carry, this.psw.auxCarry, this.psw.overflow, parityOf(this.a),
+            this.psw.f0, activeBank(this.psw.rs1, this.psw.rs0),
+            this.cycles, this.status, this.errorMessage,
+            copyStringList(this.output), this.currentInstructionText())
+    }
+}

@@ -1,0 +1,124 @@
+package publab.i8051
+
+// The 8051 instruction table (stage A — docs/8051.md). Mnemonics, registers,
+// flags and memory semantics are the real architecture (marked per item in
+// the doc); the raw opcode BYTE VALUES below are this model's own encoding,
+// the same engineering choice PubVM's Opcodes.kf makes — nothing here claims
+// to match real 8051 machine code byte for byte.
+//
+// One opcode byte, then the operands, always at most 3 bytes total — every
+// form in stage A fits that shape, so there is no per-form length table the
+// way PubVM needs one for its wider immediates: 8051 is always 8-bit.
+
+Int formNone8051() { return 0 }        // HALT, RET
+Int formReg8051() { return 1 }         // INC R0 / PUSH A / PRINT A
+Int formRegImm8051() { return 2 }      // MOV A, #5   (dest implied A for the ALU ops)
+Int formRegReg8051() { return 3 }      // MOV A, R0
+Int formRegDirect8051() { return 4 }   // MOV A, 0x30
+Int formDirectReg8051() { return 5 }   // MOV 0x30, A
+Int formAddr8051() { return 6 }        // JZ loop
+
+record OpSpec8051(Int opcode, String mnemonic, Int form)
+
+List<OpSpec8051> opcodeTable8051() {
+    var table = listOf(OpSpec8051(0x00, "HALT", formNone8051()))
+    table.add(OpSpec8051(0x01, "RET", formNone8051()))
+    table.add(OpSpec8051(0x10, "MOV", formRegImm8051()))
+    table.add(OpSpec8051(0x11, "MOV", formRegReg8051()))
+    table.add(OpSpec8051(0x12, "MOV", formRegDirect8051()))
+    table.add(OpSpec8051(0x13, "MOV", formDirectReg8051()))
+    table.add(OpSpec8051(0x20, "ADD", formRegImm8051()))
+    table.add(OpSpec8051(0x21, "ADD", formRegReg8051()))
+    table.add(OpSpec8051(0x28, "ADDC", formRegImm8051()))
+    table.add(OpSpec8051(0x29, "ADDC", formRegReg8051()))
+    table.add(OpSpec8051(0x30, "SUBB", formRegImm8051()))
+    table.add(OpSpec8051(0x31, "SUBB", formRegReg8051()))
+    table.add(OpSpec8051(0x40, "ANL", formRegImm8051()))
+    table.add(OpSpec8051(0x41, "ANL", formRegReg8051()))
+    table.add(OpSpec8051(0x48, "ORL", formRegImm8051()))
+    table.add(OpSpec8051(0x49, "ORL", formRegReg8051()))
+    table.add(OpSpec8051(0x50, "XRL", formRegImm8051()))
+    table.add(OpSpec8051(0x51, "XRL", formRegReg8051()))
+    table.add(OpSpec8051(0x58, "INC", formReg8051()))
+    table.add(OpSpec8051(0x59, "DEC", formReg8051()))
+    table.add(OpSpec8051(0x60, "JZ", formAddr8051()))
+    table.add(OpSpec8051(0x61, "JNZ", formAddr8051()))
+    table.add(OpSpec8051(0x62, "JC", formAddr8051()))
+    table.add(OpSpec8051(0x63, "JNC", formAddr8051()))
+    table.add(OpSpec8051(0x64, "JMP", formAddr8051()))
+    table.add(OpSpec8051(0x65, "CALL", formAddr8051()))
+    table.add(OpSpec8051(0x70, "PUSH", formReg8051()))
+    table.add(OpSpec8051(0x71, "POP", formReg8051()))
+    table.add(OpSpec8051(0x80, "PRINT", formReg8051()))
+    return table
+}
+
+record OpLookup8051(Bool found, Int opcode, String mnemonic, Int form)
+
+OpLookup8051 lookupInstruction8051(String mnemonic, Int form) {
+    val upper = mnemonic.toUpperCase()
+    for (var spec in opcodeTable8051()) {
+        if (spec.mnemonic() == upper && spec.form() == form) {
+            return OpLookup8051(true, spec.opcode(), spec.mnemonic(), spec.form())
+        }
+    }
+    return OpLookup8051(false, 0, upper, form)
+}
+
+OpLookup8051 lookupOpcode8051(Int opcode) {
+    for (var spec in opcodeTable8051()) {
+        if (spec.opcode() == opcode) {
+            return OpLookup8051(true, spec.opcode(), spec.mnemonic(), spec.form())
+        }
+    }
+    return OpLookup8051(false, opcode, "?", formNone8051())
+}
+
+Bool mnemonicExists8051(String mnemonic) {
+    val upper = mnemonic.toUpperCase()
+    for (var spec in opcodeTable8051()) {
+        if (spec.mnemonic() == upper) { return true }
+    }
+    return false
+}
+
+List<Int> formsForMnemonic8051(String mnemonic) {
+    val upper = mnemonic.toUpperCase()
+    var forms: List<Int> = listOf()
+    for (var spec in opcodeTable8051()) {
+        if (spec.mnemonic() == upper) { forms.add(spec.form()) }
+    }
+    return forms
+}
+
+// Real hardware restricts ADD/ADDC/SUBB/ANL/ORL/XRL to the accumulator as
+// the destination (docs/8051.md) — the parser/assembler enforce this, not
+// the opcode table, so the diagnostic can name the instruction.
+Bool mnemonicRequiresAccumulator(String mnemonic) {
+    val upper = mnemonic.toUpperCase()
+    val accOnly = listOf("ADD", "ADDC", "SUBB", "ANL", "ORL", "XRL")
+    return accOnly.contains(upper)
+}
+
+Int instructionLength8051(Int form) {
+    if (form == formNone8051()) { return 1 }
+    if (form == formReg8051()) { return 2 }
+    return 3
+}
+
+String formDescription8051(Int form) {
+    if (form == formNone8051()) { return "no operands" }
+    if (form == formReg8051()) { return "register" }
+    if (form == formRegImm8051()) { return "register, immediate (#n)" }
+    if (form == formRegReg8051()) { return "register, register" }
+    if (form == formRegDirect8051()) { return "register, direct address" }
+    if (form == formDirectReg8051()) { return "direct address, register" }
+    if (form == formAddr8051()) { return "address or label" }
+    return "unknown"
+}
+
+Int formOperandCount8051(Int form) {
+    if (form == formNone8051()) { return 0 }
+    if (form == formReg8051() || form == formAddr8051()) { return 1 }
+    return 2
+}

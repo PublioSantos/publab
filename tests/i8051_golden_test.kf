@@ -1,0 +1,64 @@
+package tests
+
+import publab.machine
+import publab.i8051
+
+// An end-to-end program exercising the 8051 model the way a real 8051
+// programmer would write one — a countdown using JNZ on the accumulator,
+// since the architecture has no persistent Zero flag to test instead
+// (docs/8051.md). This is the closest thing phase 9 stage A has to PubVM's
+// golden_test.kf.
+
+String countdown8051() {
+    return "MOV A, #3\n"
+        + "loop:\n"
+        + "PRINT A\n"
+        + "DEC A\n"
+        + "JNZ loop\n"
+        + "PRINT A\n"
+        + "HALT\n"
+}
+
+test "GOLDEN: a countdown written the real 8051 way — JNZ on A, no Z flag" {
+    val assembled = assembleSource8051(countdown8051())
+    assert(assembled.ok(), renderDiagnostics8051(assembled.diagnostics(), "en"))
+    var m = Machine8051()
+    m.load(assembled.image())
+    m.run(1000)
+    assert(statusName(m.status) == "HALTED")
+    assert(m.output.get(0) == "3" && m.output.get(1) == "2")
+    assert(m.output.get(2) == "1" && m.output.get(3) == "0")
+    assert(m.output.size == 4)
+}
+
+test "GOLDEN: the same program, stepped one instruction at a time" {
+    var m = Machine8051()
+    m.load(assembleSource8051(countdown8051()).image())
+    m.step() // MOV A, #3
+    assert(m.a == 3 as Long)
+    m.step() // PRINT A
+    assert(m.output.get(0) == "3")
+    m.step() // DEC A
+    assert(m.a == 2 as Long)
+    m.step() // JNZ loop (taken: A != 0)
+    assert(m.currentInstructionText() == "PRINT A", "jumped back to the top of the loop")
+}
+
+test "GOLDEN: a subroutine that computes, using the real register-bank switch" {
+    // A tiny, honest demonstration of the architecture's real teaching
+    // point: switching PSW's bank bits changes which memory R0 reaches —
+    // through the exact same mnemonic, within a single running program
+    // (switching banks mid-program is done directly here, since MOV PSW is
+    // a later stage; `load()`/`reset()` would clear Internal Data Memory,
+    // so the comparison has to happen without reloading in between).
+    var m = Machine8051()
+    val assembled = assembleSource8051("MOV R0, #11\nMOV R0, #22\nHALT\n")
+    assert(assembled.ok())
+    m.load(assembled.image())
+    m.step() // bank 0 (the reset default): R0 is address 0
+    assert(m.internalData.readByte(0) == 11)
+    m.psw.rs0 = true // bank 1
+    m.step() // R0 is now address 8 — the SAME mnemonic, a different byte
+    assert(m.internalData.readByte(8) == 22, "bank 1's R0 is address 8")
+    assert(m.internalData.readByte(0) == 11, "bank 0's byte survives untouched")
+}

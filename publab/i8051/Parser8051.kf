@@ -1,0 +1,220 @@
+package publab.i8051
+
+// The 8051 assembler's parser. Shape, not opcodes: mnemonic plus operands,
+// plus label definitions. Does not decide whether an instruction exists —
+// that is the assembler's job, against the opcode table.
+//
+// Operand kinds: reg, imm (#n), direct (a bare number — an Internal Data
+// Memory address for MOV, or a Code Memory address for a jump/call,
+// depending on which form it ends up filling), label (a bare identifier
+// used the same way, for a jump/call target).
+
+record Operand8051(String kind, Int reg, Long value, String label, Int line, Int column)
+
+record ParsedInstruction8051(String mnemonic, List<Operand8051> operands, Int line, Int column)
+
+record LabelDef8051(String name, Int instructionIndex, Int line, Int column)
+
+record ParseResult8051(List<ParsedInstruction8051> instructions, List<LabelDef8051> labels,
+                       List<Diagnostic8051> diagnostics)
+
+List<Operand8051> emptyOperands8051() {
+    var l: List<publab.i8051.Operand8051> = listOf()
+    return l
+}
+
+List<ParsedInstruction8051> emptyInstructions8051() {
+    var l: List<publab.i8051.ParsedInstruction8051> = listOf()
+    return l
+}
+
+List<LabelDef8051> emptyLabels8051() {
+    var l: List<publab.i8051.LabelDef8051> = listOf()
+    return l
+}
+
+Operand8051 registerOperand8051(Int id, Int line, Int column) {
+    return Operand8051("reg", id, 0 as Long, "", line, column)
+}
+
+Operand8051 immediateOperand8051(Long value, Int line, Int column) {
+    return Operand8051("imm", 0, value, "", line, column)
+}
+
+Operand8051 directOperand8051(Long value, Int line, Int column) {
+    return Operand8051("direct", 0, value, "", line, column)
+}
+
+Operand8051 labelOperand8051(String name, Int line, Int column) {
+    return Operand8051("label", 0, 0 as Long, name, line, column)
+}
+
+class Parser8051 {
+    List<Token8051> tokens
+    Int position
+    List<ParsedInstruction8051> instructions
+    List<LabelDef8051> labels
+    List<Diagnostic8051> diagnostics
+
+    constructor(List<Token8051> tokens) {
+        this.tokens = tokens
+        this.position = 0
+        this.instructions = emptyInstructions8051()
+        this.labels = emptyLabels8051()
+        this.diagnostics = emptyDiagnostics8051()
+    }
+
+    Token8051 peek() {
+        return this.tokens.get(this.position)
+    }
+
+    Token8051 peekAhead(Int offset) {
+        val index = this.position + offset
+        if (index >= this.tokens.size) { return this.tokens.get(this.tokens.size - 1) }
+        return this.tokens.get(index)
+    }
+
+    Token8051 advance() {
+        val token = this.peek()
+        if (this.position < this.tokens.size - 1) { this.position = this.position + 1 }
+        return token
+    }
+
+    Bool atEnd() {
+        return this.peek().kind() == "eof"
+    }
+
+    void skipLine() {
+        while (this.peek().kind() != "eol" && this.peek().kind() != "eof") { this.advance() }
+        if (this.peek().kind() == "eol") { this.advance() }
+    }
+
+    void reportExpected(String expected, Token8051 found) {
+        this.diagnostics.add(errorAt8051("I51012", found.line(), found.column(),
+            args2_8051(expected, describeToken8051(found))))
+    }
+
+    void parseProgram() {
+        while (!this.atEnd()) {
+            if (this.peek().kind() == "eol") {
+                this.advance()
+            } else if (this.peek().kind() == "ident" && this.peekAhead(1).kind() == "colon") {
+                val name = this.advance()
+                this.advance()
+                this.labels.add(LabelDef8051(name.text(), this.instructions.size,
+                    name.line(), name.column()))
+            } else if (this.peek().kind() == "ident") {
+                this.parseInstruction()
+            } else {
+                this.reportExpected("instruction or label", this.peek())
+                this.skipLine()
+            }
+        }
+    }
+
+    void parseInstruction() {
+        val mnemonic = this.advance()
+        var operands = emptyOperands8051()
+        var expectOperand = true
+        var failed = false
+        while (!failed && this.peek().kind() != "eol" && this.peek().kind() != "eof") {
+            if (!expectOperand) {
+                if (this.peek().kind() == "comma") {
+                    this.advance()
+                    expectOperand = true
+                } else {
+                    this.reportExpected("',' or end of line", this.peek())
+                    this.skipLine()
+                    failed = true
+                }
+            } else {
+                val parsed = this.parseOperand()
+                if (parsed.ok()) {
+                    operands.add(parsed.operand())
+                    expectOperand = false
+                } else {
+                    this.skipLine()
+                    failed = true
+                }
+            }
+        }
+        if (!failed) {
+            if (expectOperand && operands.size > 0) {
+                this.reportExpected("operand", this.peek())
+            } else {
+                this.instructions.add(ParsedInstruction8051(mnemonic.text(), operands,
+                    mnemonic.line(), mnemonic.column()))
+            }
+            if (this.peek().kind() == "eol") { this.advance() }
+        }
+    }
+
+    OperandParse8051 parseOperand() {
+        val token = this.peek()
+        if (token.kind() == "hash") {
+            this.advance()
+            val numberToken = this.peek()
+            if (numberToken.kind() != "number") {
+                this.reportExpected("a number after '#'", numberToken)
+                return OperandParse8051(false, labelOperand8051("", token.line(), token.column()))
+            }
+            this.advance()
+            return OperandParse8051(true, immediateOperand8051(numberToken.value(), token.line(), token.column()))
+        }
+        if (token.kind() == "number") {
+            this.advance()
+            return OperandParse8051(true, directOperand8051(token.value(), token.line(), token.column()))
+        }
+        if (token.kind() == "ident") {
+            this.advance()
+            val found = lookupRegister8051(token.text())
+            if (found.found()) {
+                return OperandParse8051(true, registerOperand8051(found.id(), token.line(), token.column()))
+            }
+            if (isReservedName8051(token.text())) {
+                this.diagnostics.add(errorAt8051("I51015", token.line(), token.column(),
+                    args1_8051(token.text().toUpperCase())))
+                return OperandParse8051(false, labelOperand8051("", token.line(), token.column()))
+            }
+            return OperandParse8051(true, labelOperand8051(token.text(), token.line(), token.column()))
+        }
+        this.reportExpected("operand", token)
+        return OperandParse8051(false, labelOperand8051("", token.line(), token.column()))
+    }
+}
+
+record OperandParse8051(Bool ok, Operand8051 operand)
+
+String describeToken8051(Token8051 token) {
+    if (token.kind() == "eol") { return "end of line" }
+    if (token.kind() == "eof") { return "end of file" }
+    return "'" + token.text() + "'"
+}
+
+ParseResult8051 parseTokens8051(List<Token8051> tokens) {
+    var parser = Parser8051(tokens)
+    parser.parseProgram()
+    return ParseResult8051(parser.instructions, parser.labels, parser.diagnostics)
+}
+
+record FormGuess8051(Bool ok, Int form)
+
+FormGuess8051 formFromOperands8051(List<Operand8051> operands) {
+    if (operands.size == 0) { return FormGuess8051(true, formNone8051()) }
+    if (operands.size == 1) {
+        val kind = operands.get(0).kind()
+        if (kind == "reg") { return FormGuess8051(true, formReg8051()) }
+        if (kind == "direct" || kind == "label") { return FormGuess8051(true, formAddr8051()) }
+        return FormGuess8051(false, formNone8051())
+    }
+    if (operands.size == 2) {
+        val first = operands.get(0).kind()
+        val second = operands.get(1).kind()
+        if (first == "reg" && second == "imm") { return FormGuess8051(true, formRegImm8051()) }
+        if (first == "reg" && second == "reg") { return FormGuess8051(true, formRegReg8051()) }
+        if (first == "reg" && second == "direct") { return FormGuess8051(true, formRegDirect8051()) }
+        if (first == "direct" && second == "reg") { return FormGuess8051(true, formDirectReg8051()) }
+        return FormGuess8051(false, formNone8051())
+    }
+    return FormGuess8051(false, formNone8051())
+}

@@ -1,0 +1,105 @@
+package tests
+
+import publab.i8051
+
+// Phase 9 stage A — the 8051 core: register naming, the real register-bank
+// aliasing of R0-R7, PSW bits, and the ALU (which has no Z/N flags, unlike
+// PubVM's, and whose logical instructions touch no flag at all).
+
+test "A, B and R0-R7 are named and looked up case-insensitively" {
+    assert(registerName8051(regA()) == "A")
+    assert(registerName8051(regB()) == "B")
+    assert(registerName8051(firstBankedRegister()) == "R0")
+    assert(registerName8051(lastBankedRegister()) == "R7")
+    assert(lookupRegister8051("a").found, "case-insensitive")
+    assert(lookupRegister8051("a").id == regA())
+    assert(lookupRegister8051("r3").found)
+    assert(lookupRegister8051("r3").id == firstBankedRegister() + 3)
+    assert(lookupRegister8051("R8").found == false, "only R0-R7 exist")
+    assert(lookupRegister8051("Z").found == false)
+}
+
+test "DPTR, SP, PSW and the unimplemented peripherals are reserved names" {
+    assert(isReservedName8051("DPTR"))
+    assert(isReservedName8051("SP"))
+    assert(isReservedName8051("PSW"))
+    assert(isReservedName8051("P1") && isReservedName8051("P2") && isReservedName8051("P3"))
+    assert(isReservedName8051("T0") && isReservedName8051("T1") && isReservedName8051("UART"))
+    assert(isReservedName8051("A") == false, "A is a real, implemented register")
+    assert(lookupRegister8051("DPTR").found == false, "not reachable as a general operand in stage A")
+}
+
+test "register banks: Rn is literally a byte of Internal Data Memory" {
+    assert(activeBank(false, false) == 0)
+    assert(activeBank(false, true) == 1)
+    assert(activeBank(true, false) == 2)
+    assert(activeBank(true, true) == 3)
+    // R3 in bank 0 is address 3; R3 in bank 2 is address (2*8)+3 = 19.
+    assert(bankedRegisterAddress(firstBankedRegister() + 3, 0) == 3)
+    assert(bankedRegisterAddress(firstBankedRegister() + 3, 2) == 19)
+}
+
+test "PSW starts clear, and clear() really clears it" {
+    var psw = Psw8051()
+    assert(psw.carry == false && psw.auxCarry == false && psw.overflow == false)
+    assert(psw.f0 == false && psw.rs1 == false && psw.rs0 == false)
+    psw.carry = true
+    psw.rs1 = true
+    psw.clear()
+    assert(psw.carry == false && psw.rs1 == false)
+}
+
+// --- ALU ---------------------------------------------------------------
+
+test "ADD: carry, half-carry (AC) and signed overflow, same reasoning as PubVM's ADD" {
+    val noCarry = alu8051Add(10 as Long, 20 as Long, 0 as Long)
+    assert(noCarry.value() == 30 as Long && noCarry.carry() == false)
+    val carry = alu8051Add(250 as Long, 20 as Long, 0 as Long)
+    assert(carry.value() == 14 as Long, "250+20=270, wraps to 14 in 8 bits")
+    assert(carry.carry())
+    // Half-carry: out of bit 3. 0x0F + 0x01 = 0x10, carries into bit 4.
+    val halfCarry = alu8051Add(0x0F as Long, 0x01 as Long, 0 as Long)
+    assert(halfCarry.auxCarry(), "half-carry out of bit 3")
+    val noHalfCarry = alu8051Add(0x01 as Long, 0x01 as Long, 0 as Long)
+    assert(noHalfCarry.auxCarry() == false)
+    // Signed overflow: 100 + 100 overflows signed 8-bit.
+    val overflow = alu8051Add(100 as Long, 100 as Long, 0 as Long)
+    assert(overflow.overflow())
+}
+
+test "ADDC adds the incoming carry; plain ADD (carryIn 0) does not" {
+    val withCarryIn = alu8051Add(1 as Long, 1 as Long, 1 as Long)
+    assert(withCarryIn.value() == 3 as Long, "1+1+1")
+    val withoutCarryIn = alu8051Add(1 as Long, 1 as Long, 0 as Long)
+    assert(withoutCarryIn.value() == 2 as Long)
+}
+
+test "SUBB: borrow, half-borrow, and signed overflow" {
+    val noBorrow = alu8051Subb(10 as Long, 3 as Long, 0 as Long)
+    assert(noBorrow.value() == 7 as Long && noBorrow.carry() == false)
+    val borrow = alu8051Subb(3 as Long, 10 as Long, 0 as Long)
+    assert(borrow.value() == 249 as Long, "3-10 wraps to 256-7=249")
+    assert(borrow.carry(), "the borrow sets carry")
+    val withBorrowIn = alu8051Subb(10 as Long, 3 as Long, 1 as Long)
+    assert(withBorrowIn.value() == 6 as Long, "10-3-1 (borrow-in from a previous SUBB)")
+}
+
+test "ANL/ORL/XRL are plain bitwise — they carry no flag output to apply" {
+    assert(alu8051And(0xF0 as Long, 0x0F as Long) == 0 as Long)
+    assert(alu8051Or(0xF0 as Long, 0x0F as Long) == 0xFF as Long)
+    assert(alu8051Xor(0xFF as Long, 0x0F as Long) == 0xF0 as Long)
+}
+
+test "INC/DEC wrap at the byte boundary" {
+    assert(alu8051Inc(0xFF as Long) == 0 as Long, "0xFF + 1 wraps to 0")
+    assert(alu8051Dec(0 as Long) == 0xFF as Long, "0 - 1 wraps to 0xFF")
+    assert(alu8051Inc(5 as Long) == 6 as Long)
+}
+
+test "parity is the number of set bits in A, modulo 2 — recomputed, never stored" {
+    assert(parityOf(0 as Long) == false, "zero bits set is even")
+    assert(parityOf(1 as Long), "one bit set is odd")
+    assert(parityOf(3 as Long) == false, "two bits set is even")
+    assert(parityOf(0xFF as Long) == false, "eight bits set is even")
+    assert(parityOf(7 as Long), "three bits set is odd")
+}

@@ -1,0 +1,92 @@
+package publab.i8051
+
+// Register naming and addressing (docs/8051.md, "Registers").
+//
+// A and B are plain fields on Machine8051 — not memory-mapped in stage A.
+// R0-R7 are NOT a separate register file: they are the first 8 bytes of
+// whichever Internal Data Memory bank PSW.RS1:RS0 currently selects. That
+// aliasing is real and is the actual teaching point of this architecture,
+// so `registerBankBase` and `isBankedRegister` are what every read/write of
+// R0-R7 goes through — there is no separate storage to drift from memory.
+
+record RegisterLookup8051(Bool found, Int id)
+
+Int regA() { return 0 }
+Int regB() { return 1 }
+
+// R0-R7 map to ids 2-9.
+Int firstBankedRegister() { return 2 }
+Int lastBankedRegister() { return 9 }
+
+Bool isBankedRegister(Int id) {
+    return id >= firstBankedRegister() && id <= lastBankedRegister()
+}
+
+// Which of the 4 banks (0-3) is active, from PSW.RS1:RS0.
+Int activeBank(Bool rs1, Bool rs0) {
+    var bank = 0
+    if (rs1) { bank = bank + 2 }
+    if (rs0) { bank = bank + 1 }
+    return bank
+}
+
+// Internal Data Memory address of Rn (id 2-9 -> R0-R7) in the given bank.
+// Each bank is 8 bytes, at 0x00-0x1F (docs/8051.md, "Memory").
+Int bankedRegisterAddress(Int id, Int bank) {
+    return (bank * 8) + (id - firstBankedRegister())
+}
+
+String registerName8051(Int id) {
+    if (id == regA()) { return "A" }
+    if (id == regB()) { return "B" }
+    if (isBankedRegister(id)) { return "R" + (id - firstBankedRegister()) }
+    return "?"
+}
+
+RegisterLookup8051 lookupRegister8051(String name) {
+    val upper = name.toUpperCase()
+    if (upper == "A") { return RegisterLookup8051(true, regA()) }
+    if (upper == "B") { return RegisterLookup8051(true, regB()) }
+    if (upper.length == 2 && upper.charAt(0) == 'R') {
+        val digit = upper.charAt(1)
+        if (digit >= '0' && digit <= '7') {
+            return RegisterLookup8051(true, firstBankedRegister() + ((digit as Int) - ('0' as Int)))
+        }
+    }
+    return RegisterLookup8051(false, 0)
+}
+
+// Reserved for a later stage (DPTR, SP and PSW are real registers but not
+// reachable as a general operand in stage A — see docs/8051.md; P1-P3, T0,
+// T1 and the UART are entire peripherals not planned for phase 9 at all).
+// Named here so the assembler can say so instead of "unknown register".
+Bool isReservedName8051(String name) {
+    val upper = name.toUpperCase()
+    return upper == "DPTR" || upper == "SP" || upper == "PSW"
+        || upper == "P1" || upper == "P2" || upper == "P3"
+        || upper == "T0" || upper == "T1" || upper == "UART"
+}
+
+// The PSW bits that are not derived (P is always recomputed from A — see
+// Alu8051.kf's parityOf — so it is not a field here).
+class Psw8051 {
+    Bool carry
+    Bool auxCarry
+    Bool f0
+    Bool rs1
+    Bool rs0
+    Bool overflow
+
+    constructor() {
+        this.clear()
+    }
+
+    void clear() {
+        this.carry = false
+        this.auxCarry = false
+        this.f0 = false
+        this.rs1 = false
+        this.rs0 = false
+        this.overflow = false
+    }
+}

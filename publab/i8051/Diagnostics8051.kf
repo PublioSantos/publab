@@ -1,0 +1,166 @@
+package publab.i8051
+
+// The 8051 module's own diagnostics — I51xxx codes, parallel to PubASM's
+// ASM0xx in publab.assembler, not sharing that catalogue: the 8051 model is
+// its own architecture, not a mode of PubVM, so it owns its own diagnostic
+// codes rather than reaching into PubASM's.
+//
+// Same discipline as publab.assembler.Diagnostics: a diagnostic carries a
+// CODE and its arguments, never a finished sentence — the text is produced
+// on demand in the requested language.
+
+record Diagnostic8051(String severity, String code, Int line, Int column, List<String> args)
+
+List<Diagnostic8051> emptyDiagnostics8051() {
+    var l: List<publab.i8051.Diagnostic8051> = listOf()
+    return l
+}
+
+Diagnostic8051 errorAt8051(String code, Int line, Int column, List<String> args) {
+    return Diagnostic8051("error", code, line, column, args)
+}
+
+List<String> noArgs8051() {
+    var l: List<String> = listOf()
+    return l
+}
+
+List<String> args1_8051(String a) { return listOf(a) }
+List<String> args2_8051(String a, String b) { return listOf(a, b) }
+List<String> args3_8051(String a, String b, String c) { return listOf(a, b, c) }
+
+Bool hasErrors8051(List<Diagnostic8051> diagnostics) {
+    for (var d in diagnostics) {
+        if (d.severity() == "error") { return true }
+    }
+    return false
+}
+
+Bool isPortuguese8051(String language) {
+    return language == "pt" || language == "pt_BR" || language == "pt-BR"
+}
+
+String fillTemplate8051(String template, List<String> args) {
+    var out = template
+    var i = 0
+    while (i < args.size) {
+        var marker = "{" + i + "}"
+        while (out.contains(marker)) {
+            val index = out.indexOf(marker)
+            out = out.substring(0, index) + args.get(i) + out.substring(index + marker.length)
+        }
+        i = i + 1
+    }
+    return out
+}
+
+String messageEn8051(String code) {
+    if (code == "I51001") { return "unknown instruction '{0}'" }
+    if (code == "I51002") { return "invalid operand for {0}" }
+    if (code == "I51003") { return "{0} takes {1} operand(s), but got {2}" }
+    if (code == "I51004") { return "unknown register '{0}'" }
+    if (code == "I51005") { return "immediate {0} does not fit in 8 bits (0-255)" }
+    if (code == "I51006") { return "direct address {0} is outside Internal Data Memory (0-127)" }
+    if (code == "I51007") { return "undefined label '{0}'" }
+    if (code == "I51008") { return "label '{0}' is already defined (line {1})" }
+    if (code == "I51009") { return "address {0} is outside Code Memory (0-" + (codeMemorySize8051() - 1) + ")" }
+    if (code == "I51010") { return "unexpected character '{0}'" }
+    if (code == "I51011") { return "malformed number '{0}'" }
+    if (code == "I51012") { return "expected {0}, found {1}" }
+    if (code == "I51013") { return "the program needs {0} bytes but Code Memory has {1}" }
+    if (code == "I51014") { return "'{0}' always uses A as the destination on real 8051 hardware" }
+    if (code == "I51015") { return "'{0}' belongs to a later stage, which is not implemented yet" }
+    return "diagnostic " + code
+}
+
+String hintEn8051(String code) {
+    if (code == "I51001") { return "See the instruction list in docs/8051.md." }
+    if (code == "I51002") { return "Expected: {1}." }
+    if (code == "I51004") { return "Registers: A, B, R0-R7." }
+    if (code == "I51005") { return "" }
+    if (code == "I51006") { return "" }
+    if (code == "I51007") { return "Define it by writing '{0}:' on the line you want to jump to." }
+    if (code == "I51010") { return "A comment starts with ';'." }
+    if (code == "I51011") { return "Write a number as 42, 0x2A or 0b101010; an immediate also takes #: #42." }
+    if (code == "I51014") { return "Write '" + "{0}" + " A, ...' instead." }
+    if (code == "I51015") { return "See docs/8051.md for what is implemented in this stage." }
+    return ""
+}
+
+String messagePt8051(String code) {
+    if (code == "I51001") { return "instrução desconhecida '{0}'" }
+    if (code == "I51002") { return "operando inválido para {0}" }
+    if (code == "I51003") { return "{0} recebe {1} operando(s), mas veio {2}" }
+    if (code == "I51004") { return "registrador desconhecido '{0}'" }
+    if (code == "I51005") { return "o imediato {0} não cabe em 8 bits (0-255)" }
+    if (code == "I51006") { return "o endereço direto {0} está fora da Internal Data Memory (0-127)" }
+    if (code == "I51007") { return "label não definido '{0}'" }
+    if (code == "I51008") { return "o label '{0}' já foi definido (linha {1})" }
+    if (code == "I51009") { return "o endereço {0} está fora da Code Memory (0-" + (codeMemorySize8051() - 1) + ")" }
+    if (code == "I51010") { return "caractere inesperado '{0}'" }
+    if (code == "I51011") { return "número malformado '{0}'" }
+    if (code == "I51012") { return "esperado {0}, encontrado {1}" }
+    if (code == "I51013") { return "o programa precisa de {0} bytes, mas a Code Memory tem {1}" }
+    if (code == "I51014") { return "'{0}' sempre usa A como destino no 8051 real" }
+    if (code == "I51015") { return "'{0}' pertence a uma etapa posterior, ainda não implementada" }
+    return "diagnóstico " + code
+}
+
+String hintPt8051(String code) {
+    if (code == "I51001") { return "Veja a lista de instruções em docs/8051.pt_BR.md." }
+    if (code == "I51002") { return "Esperado: {1}." }
+    if (code == "I51004") { return "Registradores: A, B, R0-R7." }
+    if (code == "I51007") { return "Defina-o escrevendo '{0}:' na linha para onde quer saltar." }
+    if (code == "I51010") { return "Um comentário começa com ';'." }
+    if (code == "I51011") { return "Escreva um número como 42, 0x2A ou 0b101010; um imediato também leva #: #42." }
+    if (code == "I51014") { return "Escreva '" + "{0}" + " A, ...' em vez disso." }
+    if (code == "I51015") { return "Veja docs/8051.pt_BR.md para o que está implementado nesta etapa." }
+    return ""
+}
+
+String severityWord8051(String severity, String language) {
+    if (isPortuguese8051(language)) {
+        if (severity == "warning") { return "aviso" }
+        return "erro"
+    }
+    return severity
+}
+
+String lineWord8051(String language) {
+    if (isPortuguese8051(language)) { return "Linha" }
+    return "Line"
+}
+
+String columnWord8051(String language) {
+    if (isPortuguese8051(language)) { return "coluna" }
+    return "column"
+}
+
+String renderDiagnostic8051(Diagnostic8051 d, String language) {
+    var head = lineWord8051(language) + " " + d.line()
+    if (d.column() > 0) {
+        head = head + ", " + columnWord8051(language) + " " + d.column()
+    }
+    head = head + ": " + severityWord8051(d.severity(), language) + " [" + d.code() + "]: "
+    var template = messageEn8051(d.code())
+    var hint = hintEn8051(d.code())
+    if (isPortuguese8051(language)) {
+        template = messagePt8051(d.code())
+        hint = hintPt8051(d.code())
+    }
+    head = head + fillTemplate8051(template, d.args())
+    val filledHint = fillTemplate8051(hint, d.args())
+    if (filledHint.length > 0) {
+        return head + "\n  " + filledHint
+    }
+    return head
+}
+
+String renderDiagnostics8051(List<Diagnostic8051> diagnostics, String language) {
+    var out = ""
+    for (var d in diagnostics) {
+        if (out.length > 0) { out = out + "\n" }
+        out = out + renderDiagnostic8051(d, language)
+    }
+    return out
+}
