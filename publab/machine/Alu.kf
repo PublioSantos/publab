@@ -58,3 +58,70 @@ AluResult aluXor(Long a, Long b, Int wordSize) {
 AluResult aluNot(Long a, Int wordSize) {
     return aluLogic(wordWrap(a, wordSize) ^ wordMask(wordSize), wordSize)
 }
+
+// --- shifts and rotates (Advanced Mode, phase 8 stage C) --------------------
+//
+// Like the logic instructions, O is always cleared — there is no
+// signed-overflow concept for a shift or a rotate. Unlike them, C is not
+// always 0: it carries the one bit that actually crossed the word's
+// boundary (docs/pubvm.md, "Shifts and rotates").
+
+AluResult aluWithCarry(Long stored, Bool carry, Int wordSize) {
+    val value = wordWrap(stored, wordSize)
+    return AluResult(value, carry, value == (0 as Long), wordIsNegative(value, wordSize), false)
+}
+
+Bool bitSet(Long value, Int position) {
+    return ((value >>> position) & (1 as Long)) == (1 as Long)
+}
+
+// SHL reg, n: zero-filled from the low end. A count of 0 moves nothing
+// (C = 0); a count >= wordSize empties the register (C = 0 — every bit is
+// already gone, so there is no single "last bit out" left to report).
+AluResult aluShl(Long a, Long count, Int wordSize) {
+    val x = wordWrap(a, wordSize)
+    val n = (count as Int)
+    if (n <= 0) { return aluWithCarry(x, false, wordSize) }
+    if (n >= wordSize) { return aluWithCarry(0 as Long, false, wordSize) }
+    return aluWithCarry(x << n, bitSet(x, wordSize - n), wordSize)
+}
+
+// SHR reg, n: zero-filled from the high end — unsigned, PubVM has no signed
+// shift. Same 0 / >= wordSize edges as SHL.
+AluResult aluShr(Long a, Long count, Int wordSize) {
+    val x = wordWrap(a, wordSize)
+    val n = (count as Int)
+    if (n <= 0) { return aluWithCarry(x, false, wordSize) }
+    if (n >= wordSize) { return aluWithCarry(0 as Long, false, wordSize) }
+    return aluWithCarry(x >>> n, bitSet(x, n - 1), wordSize)
+}
+
+// Count reduced modulo wordSize first: rotating by a whole word is the
+// identity, so there is no overflow edge to special-case the way SHL/SHR
+// have one.
+Int rotateCount(Long count, Int wordSize) {
+    var n = (count as Int) % wordSize
+    if (n < 0) { n = n + wordSize }
+    return n
+}
+
+// ROL reg, n: the bit that wraps around is the one that becomes the new
+// bit 0 — `x << n | x >>> (wordSize - n)`, wrapped to the word by the final
+// wordWrap in aluWithCarry (the standard rotate idiom).
+AluResult aluRol(Long a, Long count, Int wordSize) {
+    val x = wordWrap(a, wordSize)
+    val n = rotateCount(count, wordSize)
+    if (n == 0) { return aluWithCarry(x, false, wordSize) }
+    val stored = (x << n) | (x >>> (wordSize - n))
+    return aluWithCarry(stored, bitSet(x, wordSize - n), wordSize)
+}
+
+// ROR reg, n: the mirror of ROL — the bit that wraps around becomes the new
+// top bit.
+AluResult aluRor(Long a, Long count, Int wordSize) {
+    val x = wordWrap(a, wordSize)
+    val n = rotateCount(count, wordSize)
+    if (n == 0) { return aluWithCarry(x, false, wordSize) }
+    val stored = (x >>> n) | (x << (wordSize - n))
+    return aluWithCarry(stored, bitSet(x, n - 1), wordSize)
+}

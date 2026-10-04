@@ -49,6 +49,10 @@ List<OpSpec> opcodeTable() {
     table.add(OpSpec(0x50, "JMP", formAddr()))
     table.add(OpSpec(0x51, "JZ", formAddr()))
     table.add(OpSpec(0x52, "JC", formAddr()))
+    table.add(OpSpec(0x53, "JN", formAddr()))
+    table.add(OpSpec(0x54, "JO", formAddr()))
+    table.add(OpSpec(0x55, "JNZ", formAddr()))
+    table.add(OpSpec(0x56, "JNC", formAddr()))
     table.add(OpSpec(0x60, "PRINT", formReg()))
     table.add(OpSpec(0x70, "PUSH", formReg()))
     table.add(OpSpec(0x71, "POP", formReg()))
@@ -56,6 +60,14 @@ List<OpSpec> opcodeTable() {
     table.add(OpSpec(0x73, "RET", formNone()))
     table.add(OpSpec(0x74, "ENTER", formNone()))
     table.add(OpSpec(0x75, "LEAVE", formNone()))
+    table.add(OpSpec(0x80, "SHL", formRegImm()))
+    table.add(OpSpec(0x81, "SHL", formRegReg()))
+    table.add(OpSpec(0x88, "SHR", formRegImm()))
+    table.add(OpSpec(0x89, "SHR", formRegReg()))
+    table.add(OpSpec(0x90, "ROL", formRegImm()))
+    table.add(OpSpec(0x91, "ROL", formRegReg()))
+    table.add(OpSpec(0x98, "ROR", formRegImm()))
+    table.add(OpSpec(0x99, "ROR", formRegReg()))
     return table
 }
 
@@ -99,14 +111,16 @@ List<Int> formsForMnemonic(String mnemonic) {
     return forms
 }
 
-// Advanced Mode instructions (section 12) still NOT implemented — Phase 8
-// stage A added PUSH/POP (and the X/Y/SP/FP registers); stage B added
-// CALL/RET/ENTER/LEAVE. The shifts/rotates and the remaining conditional
-// jumps are a later stage. Listed so the assembler can say "not available
-// yet" instead of "unknown instruction".
+// Advanced Mode (section 12) is fully implemented as of phase 8 stage C:
+// stage A added PUSH/POP and the X/Y/SP/FP registers, stage B added
+// CALL/RET/ENTER/LEAVE, stage C added SHL/SHR/ROL/ROR and the remaining
+// conditional jumps (JN/JO/JNZ/JNC). This always returns false now — kept,
+// with ASM010 and its message, in case a future revision of the
+// specification adds more Advanced Mode mnemonics than are implemented at
+// the time.
 Bool isAdvancedMnemonic(String mnemonic) {
     val upper = mnemonic.toUpperCase()
-    val advanced = listOf("SHL", "SHR", "ROL", "ROR", "JN", "JO", "JNZ", "JNC")
+    var advanced: List<String> = listOf()
     return advanced.contains(upper)
 }
 

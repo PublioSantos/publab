@@ -119,18 +119,23 @@ test "a duplicate label names the first definition" {
     assert(renderDiagnostic(d, "en").contains("label 'loop' is already defined (line 1)"))
 }
 
-test "an unknown instruction is distinguished from an advanced one" {
+test "an unknown instruction is reported as unknown" {
     val unknown = assemble8("FOO A, 1\nHALT")
     assert(unknown.ok() == false)
     assert(unknown.diagnostics().get(0).code() == "ASM001")
     assert(renderDiagnostic(unknown.diagnostics().get(0), "en").contains("unknown instruction 'FOO'"))
+}
 
-    val advanced = assemble8("SHL A\nHALT")
-    assert(advanced.ok() == false)
-    val d = advanced.diagnostics().get(0)
-    assert(d.code() == "ASM010")
+// Advanced Mode is now complete (phase 8, stages A-C): every mnemonic the
+// specification lists is implemented, so isAdvancedMnemonic has no live
+// example left to assemble ASM010 from. Its rendering is still real code
+// (kept for a future revision that adds more Advanced Mode mnemonics than
+// are implemented at the time), so it is exercised directly here instead of
+// through the assembler.
+test "ASM010's rendering still works, even with no live example to assemble it from" {
+    val d = errorAt("ASM010", 1, 0, args1("FOO"))
     val text = renderDiagnostic(d, "en")
-    assert(text.contains("'SHL' belongs to Advanced Mode, which is not implemented yet"))
+    assert(text.contains("'FOO' belongs to Advanced Mode, which is not implemented yet"))
     assert(text.contains("LOAD, STORE, ADD, SUB, AND, OR, XOR, NOT, JMP, JZ, JC, PRINT, HALT"))
     assert(renderDiagnostic(d, "pt").contains("O conjunto do Basic Mode é"))
 }

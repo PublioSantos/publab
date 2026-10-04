@@ -181,7 +181,7 @@ void relabel() {
     Ui.changesTitle.text = changesTitle(language)
     Ui.viewTitle.text = viewTitle(language)
     Ui.stackTitle.text = stackTitle(language)
-    Ui.stackNote.text = stackPartialNote(language)
+    Ui.stackNote.text = stackNote(language)
     Ui.explainTitle.text = explainTitle(language)
 }
 

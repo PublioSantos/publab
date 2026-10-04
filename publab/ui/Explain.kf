@@ -326,6 +326,99 @@ String explainPrint(MachineState before, MachineState after,
     return "PRINT sent the value of " + srcOp + " (" + val_ + ") to output."
 }
 
+// --- the stack: PUSH, POP, CALL, RET, ENTER, LEAVE (Advanced Mode) ---------
+
+String explainPush(MachineState before, MachineState after,
+                   String srcOp, String language) {
+    val value = regGet(before, srcOp)
+    if (isPt(language)) {
+        return "PUSH empilhou " + srcOp + " (" + value + ") no endereço 0x"
+            + toHex(after.sp() as Long, 4) + ". SP foi de " + before.sp()
+            + " para " + after.sp() + "."
+    }
+    return "PUSH pushed " + srcOp + " (" + value + ") to address 0x"
+        + toHex(after.sp() as Long, 4) + ". SP went from " + before.sp()
+        + " to " + after.sp() + "."
+}
+
+String explainPop(MachineState before, MachineState after,
+                  String destOp, String language) {
+    val destId = regIdx(after, destOp)
+    if (destId < 0) { return before.currentInstruction() }
+    val value = after.registers().get(destId)
+    if (isPt(language)) {
+        return "POP leu o endereço 0x" + toHex(before.sp() as Long, 4) + " (" + value
+            + ") e colocou em " + destOp + ". SP foi de " + before.sp()
+            + " para " + after.sp() + "."
+    }
+    return "POP read address 0x" + toHex(before.sp() as Long, 4) + " (" + value
+        + ") into " + destOp + ". SP went from " + before.sp()
+        + " to " + after.sp() + "."
+}
+
+String explainCall(MachineState before, MachineState after,
+                   String addrOp, String language) {
+    if (isPt(language)) {
+        return "CALL guardou o endereço de retorno na pilha (SP foi de " + before.sp()
+            + " para " + after.sp() + ") e saltou para " + addrOp + "."
+    }
+    return "CALL saved the return address on the stack (SP went from " + before.sp()
+        + " to " + after.sp() + ") and jumped to " + addrOp + "."
+}
+
+String explainRet(MachineState before, MachineState after, String language) {
+    if (isPt(language)) {
+        return "RET removeu o endereço de retorno da pilha (SP foi de " + before.sp()
+            + " para " + after.sp() + ") e voltou a executar em 0x"
+            + toHex(after.pc() as Long, 4) + "."
+    }
+    return "RET removed the return address from the stack (SP went from " + before.sp()
+        + " to " + after.sp() + ") and execution resumed at 0x"
+        + toHex(after.pc() as Long, 4) + "."
+}
+
+String explainEnter(MachineState before, MachineState after, String language) {
+    if (isPt(language)) {
+        return "ENTER guardou o FP antigo (" + before.fp() + ") na pilha e definiu FP = SP ("
+            + after.fp() + "). Novo frame começando."
+    }
+    return "ENTER saved the old FP (" + before.fp() + ") on the stack and set FP = SP ("
+        + after.fp() + "). A new frame begins."
+}
+
+String explainLeave(MachineState before, MachineState after, String language) {
+    if (isPt(language)) {
+        return "LEAVE descartou o que o frame empilhou (SP = FP) e restaurou o FP antigo: "
+            + before.fp() + " → " + after.fp() + ". SP agora é " + after.sp() + "."
+    }
+    return "LEAVE discarded whatever the frame had pushed (SP = FP) and restored the old FP: "
+        + before.fp() + " → " + after.fp() + ". SP is now " + after.sp() + "."
+}
+
+// --- shifts and rotates (Advanced Mode) -------------------------------------
+
+String explainShiftLike(MachineState before, MachineState after,
+                        String destOp, String srcOp, String mnemonic,
+                        String verbPt, String verbEn, String language) {
+    val destId = regIdx(before, destOp)
+    if (destId < 0) { return before.currentInstruction() }
+    val aVal = before.registers().get(destId)
+    val result = after.registers().get(destId)
+    val w = before.wordSize()
+    val countDisplay = if (isReg(srcOp)) srcOp + " (" + regGet(before, srcOp) + ")" else srcOp
+    val carryOn = after.carry()
+    if (isPt(language)) {
+        return mnemonic + " " + verbPt + " " + destOp + " por " + countDisplay + ":\n  antes:  "
+            + toBin(aVal, w) + "\n  depois: " + toBin(result, w)
+            + "\n  Resultado em " + destOp + ": " + decAndHex(result, w)
+            + ". Carry (C) = " + flagDigit(carryOn) + " (o bit que atravessou a borda da palavra)."
+    }
+    return mnemonic + " " + verbEn + " " + destOp + " by " + countDisplay + ":\n  before: "
+        + toBin(aVal, w) + "\n  after:  " + toBin(result, w)
+        + "\n  Result in " + destOp + ": " + decAndHex(result, w)
+        + ". Carry (C) = " + flagDigit(carryOn) + " (the bit that crossed the word's boundary)."
+}
+
 // --- multi-step run summary -------------------------------------------------
 
 String explainRun(MachineState before, MachineState after, String language) {
@@ -371,6 +464,16 @@ String instructionExplanation(MachineState before, MachineState after, String la
     if (mn == "JNZ") { return explainJcondNeg(before, after, ops, "Z", language) }
     if (mn == "JNC") { return explainJcondNeg(before, after, ops, "C", language) }
     if (mn == "PRINT") { return explainPrint(before, after, oa, language) }
+    if (mn == "PUSH") { return explainPush(before, after, oa, language) }
+    if (mn == "POP") { return explainPop(before, after, oa, language) }
+    if (mn == "CALL") { return explainCall(before, after, ops, language) }
+    if (mn == "RET") { return explainRet(before, after, language) }
+    if (mn == "ENTER") { return explainEnter(before, after, language) }
+    if (mn == "LEAVE") { return explainLeave(before, after, language) }
+    if (mn == "SHL") { return explainShiftLike(before, after, oa, ob, "SHL", "deslocou", "shifted", language) }
+    if (mn == "SHR") { return explainShiftLike(before, after, oa, ob, "SHR", "deslocou", "shifted", language) }
+    if (mn == "ROL") { return explainShiftLike(before, after, oa, ob, "ROL", "rotacionou", "rotated", language) }
+    if (mn == "ROR") { return explainShiftLike(before, after, oa, ob, "ROR", "rotacionou", "rotated", language) }
     return instr
 }
 

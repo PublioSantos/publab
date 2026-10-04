@@ -83,14 +83,20 @@ Which flags each instruction touches is in [pubvm.md](pubvm.md).
 
 ## Instructions — Advanced Mode
 
-| instruction | forms | status |
-|---|---|---|
-| `PUSH` `POP` | `op r` | implemented (stage A) |
-| `CALL` `RET` `SHL` `SHR` `ROL` `ROR` `JN` `JO` `JNZ` `JNC` `ENTER` `LEAVE` | — | **not implemented** |
+Fully implemented, in three stages:
 
-The assembler recognises the not-yet-implemented mnemonics and rejects them
-with `ASM010`, saying they belong to Advanced Mode — not with
-"unknown instruction".
+| instruction | forms | stage |
+|---|---|---|
+| `PUSH` `POP` | `op r` | A |
+| `CALL` | `op addr` (a label or a number) | B |
+| `RET` `ENTER` `LEAVE` | `op` (no operands) | B |
+| `SHL` `SHR` `ROL` `ROR` | `op r, imm` · `op r, r` (the second operand is the shift/rotate count) | C |
+| `JN` `JO` `JNZ` `JNC` | `op addr` (a label or a number) | C |
+
+`ASM010` ("'{0}' belongs to Advanced Mode, which is not implemented yet")
+exists in case a future stage adds more Advanced Mode mnemonics than are
+implemented at the time; right now every Advanced Mode mnemonic listed in
+the specification is implemented, so this diagnostic has no live example.
 
 Note that the Basic Mode set has **no `JNZ`**, so a countdown loop tests for
 zero and jumps out, then jumps back unconditionally — see

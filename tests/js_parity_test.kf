@@ -258,9 +258,13 @@ test "D-2: a failing first instruction does not index an empty list" {
     assert(badCount.ok() == false)
     assert(badCount.diagnostics().get(0).code() == "ASM003")
 
+    // SHL takes two operands (reg, count); giving it one is a wrong-operand-
+    // count failure on the very first instruction — the same shape of guard
+    // this test exists to cover, now that Advanced Mode has no "not
+    // implemented" mnemonic left to produce ASM010 from.
     val advanced = assembleSource("SHL A\nHALT\n", pubvm8())
     assert(advanced.ok() == false)
-    assert(advanced.diagnostics().get(0).code() == "ASM010")
+    assert(advanced.diagnostics().get(0).code() == "ASM003")
 
     // A program whose FIRST line is fine and whose second fails, to cover the
     // other side of the same guard.

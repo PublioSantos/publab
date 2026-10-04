@@ -109,8 +109,20 @@ test "instruction table is the single source of truth" {
     assert(lookupInstruction("RET", formNone()).opcode() == 0x73)
     assert(lookupInstruction("ENTER", formNone()).opcode() == 0x74)
     assert(lookupInstruction("LEAVE", formNone()).opcode() == 0x75)
-    assert(mnemonicExists("SHL") == false, "SHL is advanced mode, not implemented yet")
-    assert(isAdvancedMnemonic("SHL"))
+    assert(mnemonicExists("SHL"), "SHL is Advanced Mode, implemented since phase 8 stage C")
+    assert(isAdvancedMnemonic("SHL") == false)
+    assert(lookupInstruction("SHL", formRegImm()).opcode() == 0x80)
+    assert(lookupInstruction("SHL", formRegReg()).opcode() == 0x81)
+    assert(lookupInstruction("SHR", formRegImm()).opcode() == 0x88)
+    assert(lookupInstruction("ROL", formRegImm()).opcode() == 0x90)
+    assert(lookupInstruction("ROR", formRegImm()).opcode() == 0x98)
+    assert(lookupInstruction("JN", formAddr()).opcode() == 0x53)
+    assert(lookupInstruction("JO", formAddr()).opcode() == 0x54)
+    assert(lookupInstruction("JNZ", formAddr()).opcode() == 0x55)
+    assert(lookupInstruction("JNC", formAddr()).opcode() == 0x56)
+    // Advanced Mode is now complete: nothing is left for isAdvancedMnemonic
+    // to report, so the ASM010 path has no live example anymore.
+    assert(isAdvancedMnemonic("FOOBAR") == false)
 }
 
 test "encoded instruction length follows the machine" {

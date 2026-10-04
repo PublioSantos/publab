@@ -72,14 +72,13 @@ palavra.
 implementados**: mais dois registradores gerais do tamanho da palavra, ids 4
 e 5, usáveis em qualquer lugar onde A-D também são.
 
-`SP` e `FP` também pertencem ao Advanced Mode. O `SP` **está implementado**,
-mas como um endereço ao lado do `PC`, não como registrador do tamanho da
-palavra (seção "Pilha" abaixo) — ele precisa guardar `memorySize`, um
-endereço além do topo da memória, o que não cabe numa palavra de 8 ou 16
-bits. O `FP` existe como o mesmo tipo de campo de endereço, inicializado em
-0, mas nada ainda o lê ou escreve: está reservado para
-`CALL`/`RET`/`ENTER`/`LEAVE`, uma etapa posterior. Nenhum dos dois é
-alcançável como registrador geral de operando — o assembler rejeita
+`SP` e `FP` também pertencem ao Advanced Mode, e **ambos estão
+implementados**, como endereços ao lado do `PC`, não como registradores do
+tamanho da palavra (seção "Pilha" abaixo) — o `SP` precisa guardar
+`memorySize`, um endereço além do topo da memória, o que não cabe numa
+palavra de 8 ou 16 bits. O `FP` começa em 0 e é lido e escrito pelo
+`ENTER`/`LEAVE` (ver "Endereços de retorno e frames" abaixo). Nenhum dos
+dois é alcançável como registrador geral de operando — o assembler rejeita
 `SP`/`FP` do mesmo jeito que sempre rejeitou qualquer nome do Advanced Mode,
 com `ASM014`.
 
@@ -197,7 +196,8 @@ Exatamente quais instruções mexem em quais flags:
 |---|---|---|---|---|
 | `ADD`, `SUB` | define | define | define | define |
 | `AND`, `OR`, `XOR`, `NOT` | zera | define | define | zera |
-| `LOAD`, `STORE`, `JMP`, `JZ`, `JC`, `PRINT`, `HALT` | não mexe | não mexe | não mexe | não mexe |
+| `SHL`, `SHR`, `ROL`, `ROR` | define com o bit que saiu | define | define | zera |
+| `LOAD`, `STORE`, `JMP`, `JZ`, `JC`, `JN`, `JO`, `JNZ`, `JNC`, `PUSH`, `POP`, `CALL`, `RET`, `ENTER`, `LEAVE`, `PRINT`, `HALT` | não mexe | não mexe | não mexe | não mexe |
 
 ### Z e N — idênticos nas seis instruções aritméticas e lógicas
 
@@ -252,6 +252,44 @@ Não existe carry nem overflow com sinal numa operação bitwise, então os dois
 são **zerados** em vez de ficarem intocados — um programa pode confiar no
 valor deles depois de uma instrução lógica.
 
+### Shifts e rotates (etapa C)
+
+`SHL`, `SHR`, `ROL` e `ROR` têm as mesmas duas formas de `ADD`/`SUB`/`AND`/
+`OR`/`XOR`: `op reg, imm` ou `op reg, reg` — o segundo operando é a
+**contagem** de deslocamento ou rotação, não um segundo valor para combinar.
+`Z` e `N` seguem a mesma regra de qualquer outra instrução
+aritmética/lógica: calculados sobre o resultado guardado. `O` sempre zera,
+pelo mesmo motivo das instruções bitwise — não existe conceito de overflow
+com sinal num shift ou rotate.
+
+`C` é o único bit que de fato atravessou a borda da palavra:
+
+```
+SHL reg, n:  C = bit (wordSize - n) de reg, ANTES do shift   (o bit mais alto que saiu)
+             reg = reg << n                                   (preenchido com zero pelo lado baixo)
+
+SHR reg, n:  C = bit (n - 1) de reg, ANTES do shift            (o bit mais baixo que saiu)
+             reg = reg >>> n                                   (preenchido com zero pelo lado alto, sem sinal)
+
+ROL reg, n:  C = bit (wordSize - n) de reg, ANTES do rotate    (o bit que se torna o novo bit 0)
+             reg = reg rotacionado à esquerda por n
+
+ROR reg, n:  C = bit (n - 1) de reg, ANTES do rotate            (o bit que se torna o novo bit mais alto)
+             reg = reg rotacionado à direita por n
+```
+
+`n` é reduzido antes de ser usado: para `SHL`/`SHR`, contagem 0 é um no-op
+(`C = 0`, nada se moveu) e contagem `>= wordSize` esvazia o registrador
+inteiro (`C = 0` — com todo bit já sumido, não há um único "último bit que
+saiu" para reportar). Para `ROL`/`ROR`, a contagem é tomada módulo
+`wordSize`, já que rotacionar por uma palavra inteira é a identidade.
+
+O shift é **sem sinal** (`SHR` nunca estende o sinal) — a PubVM não tem uma
+instrução de shift com sinal separada; os registradores do Basic Mode já não
+têm noção de sinal além da flag `N`, que é reconstruída a partir do padrão de
+bits guardado do mesmo jeito que o `wordToSigned` faz para qualquer outra
+instrução.
+
 ## Conjunto de instruções — Basic Mode
 
 ```
@@ -262,9 +300,23 @@ LOAD  STORE  ADD  SUB  AND  OR  XOR  NOT  JMP  JZ  JC  PRINT  HALT
 CPU (seção 13 da especificação). Ela acrescenta o valor guardado no
 registrador, em decimal sem sinal, à saída da máquina.
 
-Advanced Mode, etapa A: `PUSH` e `POP` (ver "Pilha" acima). `CALL`, `RET`,
-shifts, rotates, `JN`, `JO`, `JNZ`, `JNC`, `ENTER` e `LEAVE` **ainda não estão
-implementados**.
+O Advanced Mode está totalmente implementado, nas três etapas que as
+próprias notas descrevem: etapa A (`PUSH`, `POP`, e os registradores
+`X`/`Y`/`SP`/`FP` — ver "Pilha" acima), etapa B (`CALL`, `RET`, `ENTER`,
+`LEAVE` — ver "Endereços de retorno e frames" acima) e etapa C (`SHL`,
+`SHR`, `ROL`, `ROR`, `JN`, `JO`, `JNZ`, `JNC` — ver "Shifts e rotates" acima
+e a tabela de saltos condicionais abaixo).
+
+### Saltos condicionais
+
+```
+JZ   addr   salta se Z == 1       JNZ  addr   salta se Z == 0
+JC   addr   salta se C == 1       JNC  addr   salta se C == 0
+JN   addr   salta se N == 1       JO   addr   salta se O == 1
+```
+
+Os seis recebem um label ou um endereço numérico, exatamente como o `JMP`,
+e não mexem em nenhuma flag.
 
 ## Encoding
 

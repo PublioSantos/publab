@@ -72,7 +72,7 @@ unless it is covered by the test suite.
 | 5B | Minimal UI | **done** |
 | 6 | Debugger | **done** |
 | 7 | Educational layer | **done** |
-| 8 | Advanced Mode — X, Y, SP, FP, stack, shifts, extra jumps | in progress (stages A-B: X, Y, SP, FP, PUSH, POP, CALL, RET, ENTER, LEAVE) |
+| 8 | Advanced Mode — X, Y, SP, FP, stack, shifts, extra jumps | **done** |
 | 9 | 8051 educational model | not started |
 | 10 | Cortex-M3 educational model | not started |
 | 11 | Architecture comparison | not started |
@@ -105,21 +105,27 @@ the last Step or Run actually did, built from the same before/after snapshots
 the debugger's change list reads — never a second interpretation of the
 program.
 
-Advanced Mode (phase 8) is under way in stages. Stage A is done: `X` and `Y`
-are ordinary general registers; `SP` and `FP` are implemented as addresses
-next to `PC` (not word-sized registers — `SP`'s initial value, one past the
-top of memory, does not fit an 8-bit or 16-bit word); `PUSH` and `POP` move
-the stack, with explicit overflow/underflow faults, never a silent wrap.
-Stage B is done too: `CALL` and `RET` push/pop the return address, `ENTER`
+Advanced Mode (phase 8) is **done**, built in three stages. Stage A: `X` and
+`Y` are ordinary general registers; `SP` and `FP` are implemented as
+addresses next to `PC` (not word-sized registers — `SP`'s initial value, one
+past the top of memory, does not fit an 8-bit or 16-bit word); `PUSH` and
+`POP` move the stack, with explicit overflow/underflow faults, never a
+silent wrap. Stage B: `CALL` and `RET` push/pop the return address, `ENTER`
 and `LEAVE` are the classic save-FP / restore-FP prologue and epilogue — all
 through the same stack and the same overflow/underflow checks `PUSH`/`POP`
 use, but moving `addressBytes` rather than `wordBytes` (a return address and
 a saved FP are locations, not data — see "Stack" in
 [docs/pubvm.md](docs/pubvm.md)). The debugger's STACK panel shows SP/FP and
-the words on the stack, read from the real memory through SP. The shifts,
-rotates and remaining conditional jumps (`JN`, `JO`, `JNZ`, `JNC`) are a
-later stage — the assembler recognises those mnemonics and says they belong
-to Advanced Mode, rather than reporting them as unknown.
+the words on the stack, read from the real memory through SP. Stage C:
+`SHL`/`SHR`/`ROL`/`ROR` take the same `op reg, imm`/`op reg, reg` forms as
+`ADD`/`SUB` (the second operand is the shift/rotate count), with `C` set to
+the one bit that actually crossed the word's boundary; `JN`, `JO`, `JNZ`
+and `JNC` round out the conditional jumps. Every Advanced Mode mnemonic the
+specification lists is now implemented — `ASM010` ("belongs to Advanced
+Mode, not implemented yet") has no live example left to assemble it from.
+The EXPLANATION panel covers all of it too: `PUSH`/`POP`/`CALL`/`RET`/
+`ENTER`/`LEAVE` describe what moved on the stack, and the shifts/rotates
+name the carry bit that crossed the boundary.
 
 One absence is deliberate rather than pending:
 

@@ -281,6 +281,50 @@ class Machine {
             if (this.flags.carry) { this.pc = d.address() } else { this.pc = next }
             return
         }
+        if (mnemonic == "JN") {
+            if (this.flags.negative) { this.pc = d.address() } else { this.pc = next }
+            return
+        }
+        if (mnemonic == "JO") {
+            if (this.flags.overflow) { this.pc = d.address() } else { this.pc = next }
+            return
+        }
+        if (mnemonic == "JNZ") {
+            if (!this.flags.zero) { this.pc = d.address() } else { this.pc = next }
+            return
+        }
+        if (mnemonic == "JNC") {
+            if (!this.flags.carry) { this.pc = d.address() } else { this.pc = next }
+            return
+        }
+        if (mnemonic == "SHL") {
+            val r = aluShl(this.registers.read(d.reg1()), this.operandValue(d), ws)
+            this.registers.write(d.reg1(), r.value())
+            this.applyFlags(r)
+            this.pc = next
+            return
+        }
+        if (mnemonic == "SHR") {
+            val r = aluShr(this.registers.read(d.reg1()), this.operandValue(d), ws)
+            this.registers.write(d.reg1(), r.value())
+            this.applyFlags(r)
+            this.pc = next
+            return
+        }
+        if (mnemonic == "ROL") {
+            val r = aluRol(this.registers.read(d.reg1()), this.operandValue(d), ws)
+            this.registers.write(d.reg1(), r.value())
+            this.applyFlags(r)
+            this.pc = next
+            return
+        }
+        if (mnemonic == "ROR") {
+            val r = aluRor(this.registers.read(d.reg1()), this.operandValue(d), ws)
+            this.registers.write(d.reg1(), r.value())
+            this.applyFlags(r)
+            this.pc = next
+            return
+        }
         if (mnemonic == "PUSH") {
             this.pushBytes(w, this.registers.read(d.reg1()))
             this.pc = next

@@ -194,16 +194,14 @@ String noExplainYet(String language) {
     return "Assemble a program and press Step to see the instruction explained."
 }
 
-// Phase 8 stages A and B implemented SP, FP, PUSH, POP, CALL, RET, ENTER and
-// LEAVE. The shifts, rotates and remaining conditional jumps are later stages
-// — they do not touch the stack, but FP/SP are fully in use already.
-String stackPartialNote(String language) {
+// Phase 8 (Advanced Mode) is complete: stages A and B gave the stack SP, FP,
+// PUSH, POP, CALL, RET, ENTER and LEAVE; stage C's shifts, rotates and extra
+// conditional jumps do not touch this panel (they never touch the stack).
+String stackNote(String language) {
     if (isPt(language)) {
-        return "PUSH, POP, CALL, RET, ENTER e LEAVE movem esta pilha. Shifts, rotates e"
-            + " os saltos condicionais restantes ainda não existem."
+        return "PUSH, POP, CALL, RET, ENTER e LEAVE movem esta pilha."
     }
-    return "PUSH, POP, CALL, RET, ENTER and LEAVE move this stack. Shifts, rotates and"
-        + " the remaining conditional jumps do not exist yet."
+    return "PUSH, POP, CALL, RET, ENTER and LEAVE move this stack."
 }
 
 String stackTitle(String language) {

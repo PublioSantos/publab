@@ -68,14 +68,14 @@ Basic Mode has four general registers, all of them word-sized:
 implemented**: two more word-sized general registers, ids 4 and 5, usable
 anywhere A-D are.
 
-`SP` and `FP` also belong to Advanced Mode. `SP` **is implemented**, but as
-an address next to `PC`, not as a word-sized register (section "Stack"
-below) — it has to hold `memorySize`, one past the top of memory, which does
-not fit an 8-bit or 16-bit word. `FP` exists as the same kind of address
-field, initialized to 0, but nothing reads or writes it yet: it is reserved
-for `CALL`/`RET`/`ENTER`/`LEAVE`, a later stage. Neither is reachable as a
-general operand register — the assembler rejects `SP`/`FP` the same way it
-always rejected every Advanced Mode name, with `ASM014`.
+`SP` and `FP` also belong to Advanced Mode, and **are both implemented**, as
+addresses next to `PC`, not as word-sized registers (section "Stack"
+below) — `SP` has to hold `memorySize`, one past the top of memory, which
+does not fit an 8-bit or 16-bit word. `FP` starts at 0 and is read and
+written by `ENTER`/`LEAVE` (see "Return addresses and frames" below).
+Neither is reachable as a general operand register — the assembler rejects
+`SP`/`FP` the same way it always rejected every Advanced Mode name, with
+`ASM014`.
 
 ## Stack
 
@@ -189,7 +189,8 @@ Exactly which instructions touch which flags:
 |---|---|---|---|---|
 | `ADD`, `SUB` | set | set | set | set |
 | `AND`, `OR`, `XOR`, `NOT` | cleared to 0 | set | set | cleared to 0 |
-| `LOAD`, `STORE`, `JMP`, `JZ`, `JC`, `PRINT`, `HALT` | unchanged | unchanged | unchanged | unchanged |
+| `SHL`, `SHR`, `ROL`, `ROR` | set to the bit moved out | set | set | cleared to 0 |
+| `LOAD`, `STORE`, `JMP`, `JZ`, `JC`, `JN`, `JO`, `JNZ`, `JNC`, `PUSH`, `POP`, `CALL`, `RET`, `ENTER`, `LEAVE`, `PRINT`, `HALT` | unchanged | unchanged | unchanged | unchanged |
 
 ### Z and N — identical for all six arithmetic and logic instructions
 
@@ -244,6 +245,42 @@ There is no carry and no signed overflow in a bitwise operation, so both are
 **cleared** rather than left alone — a program can rely on their value after a
 logic instruction.
 
+### Shifts and rotates (stage C)
+
+`SHL`, `SHR`, `ROL` and `ROR` take the same two forms as `ADD`/`SUB`/`AND`/
+`OR`/`XOR`: `op reg, imm` or `op reg, reg` — the second operand is the shift
+or rotate **count**, not a second value to combine with. `Z` and `N` follow
+the same rule as every other arithmetic/logic instruction: computed on the
+stored result. `O` is always cleared, the same reasoning as the bitwise
+instructions — there is no signed-overflow concept for a shift or a rotate.
+
+`C` is the one bit that actually moved across the word's boundary:
+
+```
+SHL reg, n:  C = bit (wordSize - n) of reg, BEFORE the shift   (the highest bit shifted out)
+             reg = reg << n                                    (zero-filled from the low end)
+
+SHR reg, n:  C = bit (n - 1) of reg, BEFORE the shift           (the lowest bit shifted out)
+             reg = reg >>> n                                    (zero-filled from the high end, unsigned)
+
+ROL reg, n:  C = bit (wordSize - n) of reg, BEFORE the rotate   (the bit that becomes the new bit 0)
+             reg = reg rotated left by n, wrapped
+
+ROR reg, n:  C = bit (n - 1) of reg, BEFORE the rotate           (the bit that becomes the new top bit)
+             reg = reg rotated right by n, wrapped
+```
+
+`n` is reduced before it is used: for `SHL`/`SHR`, a count of 0 is a no-op
+(`C = 0`, nothing moved) and a count `>= wordSize` empties the register
+entirely (`C = 0` — with every bit already gone, there is no single "last
+bit out" left to report). For `ROL`/`ROR`, the count is taken modulo
+`wordSize` first, since rotating by a whole word is the identity.
+
+Shifting is **unsigned** (`SHR` never sign-extends) — PubVM has no separate
+signed shift instruction; the Basic Mode registers already have no notion
+of signedness beyond the `N` flag, and this is reconstructed from the stored
+bit pattern the same way `wordToSigned` does for every other instruction.
+
 ## Instruction set — Basic Mode
 
 ```
@@ -254,9 +291,23 @@ LOAD  STORE  ADD  SUB  AND  OR  XOR  NOT  JMP  JZ  JC  PRINT  HALT
 instruction (section 13 of the specification). It appends the register's
 stored value, in unsigned decimal, to the machine's output.
 
-Advanced Mode, stage A: `PUSH` and `POP` (see "Stack" above). `CALL`, `RET`,
-shifts, rotates, `JN`, `JO`, `JNZ`, `JNC`, `ENTER` and `LEAVE` are **not
-implemented** yet.
+Advanced Mode is fully implemented, in the three stages its own notes
+describe: stage A (`PUSH`, `POP`, and the `X`/`Y`/`SP`/`FP` registers — see
+"Stack" above), stage B (`CALL`, `RET`, `ENTER`, `LEAVE` — see "Return
+addresses and frames" above), and stage C (`SHL`, `SHR`, `ROL`, `ROR`, `JN`,
+`JO`, `JNZ`, `JNC` — see "Shifts and rotates" above and the conditional-jump
+table below).
+
+### Conditional jumps
+
+```
+JZ   addr   jump if Z == 1       JNZ  addr   jump if Z == 0
+JC   addr   jump if C == 1       JNC  addr   jump if C == 0
+JN   addr   jump if N == 1       JO   addr   jump if O == 1
+```
+
+All six take a label or a numeric address, exactly like `JMP`, and touch no
+flag themselves.
 
 ## Encoding
 

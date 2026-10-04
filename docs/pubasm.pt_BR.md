@@ -84,14 +84,21 @@ Quais flags cada instrução altera está em [pubvm.pt_BR.md](pubvm.pt_BR.md).
 
 ## Instruções — Advanced Mode
 
-| instrução | formas | situação |
-|---|---|---|
-| `PUSH` `POP` | `op r` | implementado (etapa A) |
-| `CALL` `RET` `SHL` `SHR` `ROL` `ROR` `JN` `JO` `JNZ` `JNC` `ENTER` `LEAVE` | — | **não implementado** |
+Totalmente implementado, em três etapas:
 
-O assembler reconhece os mnemônicos ainda não implementados e os rejeita com
-`ASM010`, dizendo que pertencem ao Advanced Mode — não com "instrução
-desconhecida".
+| instrução | formas | etapa |
+|---|---|---|
+| `PUSH` `POP` | `op r` | A |
+| `CALL` | `op addr` (um label ou um número) | B |
+| `RET` `ENTER` `LEAVE` | `op` (sem operandos) | B |
+| `SHL` `SHR` `ROL` `ROR` | `op r, imm` · `op r, r` (o segundo operando é a contagem de shift/rotate) | C |
+| `JN` `JO` `JNZ` `JNC` | `op addr` (um label ou um número) | C |
+
+O `ASM010` ("'{0}' pertence ao Advanced Mode, que ainda não está
+implementado") existe para o caso de uma etapa futura acrescentar mais
+mnemônicos do Advanced Mode do que os implementados até então; agora mesmo,
+todo mnemônico do Advanced Mode listado na especificação está implementado,
+então esse diagnóstico não tem exemplo vivo.
 
 Note que o conjunto do Basic Mode **não tem `JNZ`**, então um laço de contagem
 decrescente testa zero e sai, depois volta com um salto incondicional — veja
