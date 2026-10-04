@@ -1,0 +1,73 @@
+package kofplab.machine
+
+// Basic Mode register set (section 8 of the specification): A, B, C, D.
+// PC is not here — it is an address, held by the machine itself, and does not
+// follow the word size.
+//
+// X, Y, SP and FP belong to Advanced Mode (phase 8). They are NOT implemented;
+// they are named here only so the assembler can reject them with an honest
+// diagnostic instead of "unknown register".
+
+record RegisterLookup(Bool found, Int id)
+
+Int basicRegisterCount() {
+    return 4
+}
+
+String registerName(Int id) {
+    if (id == 0) { return "A" }
+    if (id == 1) { return "B" }
+    if (id == 2) { return "C" }
+    if (id == 3) { return "D" }
+    return "?"
+}
+
+RegisterLookup lookupRegister(String name) {
+    val upper = name.toUpperCase()
+    if (upper == "A") { return RegisterLookup(true, 0) }
+    if (upper == "B") { return RegisterLookup(true, 1) }
+    if (upper == "C") { return RegisterLookup(true, 2) }
+    if (upper == "D") { return RegisterLookup(true, 3) }
+    return RegisterLookup(false, 0)
+}
+
+Bool isAdvancedRegisterName(String name) {
+    val upper = name.toUpperCase()
+    return upper == "X" || upper == "Y" || upper == "SP" || upper == "FP"
+}
+
+void registerFault(Int id) {
+    throw "register id out of range: " + id
+}
+
+class RegisterFile {
+    Long[] values
+    Int wordSize
+    Int count
+
+    constructor(Int wordSize, Int count) {
+        this.wordSize = wordSize
+        this.count = count
+        this.values = new Long[count]
+    }
+
+    Long read(Int id) {
+        if (id < 0 || id >= this.count) { registerFault(id) }
+        return this.values[id]
+    }
+
+    // Every write goes through the word size — this is what makes a KofVM-8
+    // store 14 where a KofVM-16 stores 270.
+    void write(Int id, Long value) {
+        if (id < 0 || id >= this.count) { registerFault(id) }
+        this.values[id] = wordWrap(value, this.wordSize)
+    }
+
+    void clear() {
+        var i = 0
+        while (i < this.count) {
+            this.values[i] = 0 as Long
+            i++
+        }
+    }
+}

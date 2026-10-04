@@ -1,0 +1,60 @@
+package kofplab.machine
+
+// The arithmetic and logic unit. It produces the stored value AND the four
+// flags together, from the word size — the interface never computes a flag.
+
+record AluResult(Long value, Bool carry, Bool zero, Bool negative, Bool overflow)
+
+AluResult aluAdd(Long a, Long b, Int wordSize) {
+    val x = wordWrap(a, wordSize)
+    val y = wordWrap(b, wordSize)
+    val raw = x + y
+    val stored = wordWrap(raw, wordSize)
+    // Carry: the true sum did not fit in the word.
+    val carry = raw > wordMask(wordSize)
+    val signA = wordIsNegative(x, wordSize)
+    val signB = wordIsNegative(y, wordSize)
+    val signR = wordIsNegative(stored, wordSize)
+    // Signed overflow: equal operand signs, different result sign.
+    val overflow = (signA == signB) && (signR != signA)
+    return AluResult(stored, carry, stored == (0 as Long), signR, overflow)
+}
+
+AluResult aluSub(Long a, Long b, Int wordSize) {
+    val x = wordWrap(a, wordSize)
+    val y = wordWrap(b, wordSize)
+    val stored = wordWrap(x - y, wordSize)
+    // Carry on SUB means borrow: the subtrahend was larger (unsigned).
+    val carry = x < y
+    val signA = wordIsNegative(x, wordSize)
+    val signB = wordIsNegative(y, wordSize)
+    val signR = wordIsNegative(stored, wordSize)
+    // Signed overflow: different operand signs, result sign unlike the minuend.
+    val overflow = (signA != signB) && (signR != signA)
+    return AluResult(stored, carry, stored == (0 as Long), signR, overflow)
+}
+
+// Logic operations define C and O as cleared — there is no carry and no
+// signed overflow in a bitwise operation.
+AluResult aluLogic(Long stored, Int wordSize) {
+    val value = wordWrap(stored, wordSize)
+    return AluResult(value, false, value == (0 as Long),
+        wordIsNegative(value, wordSize), false)
+}
+
+AluResult aluAnd(Long a, Long b, Int wordSize) {
+    return aluLogic(wordWrap(a, wordSize) & wordWrap(b, wordSize), wordSize)
+}
+
+AluResult aluOr(Long a, Long b, Int wordSize) {
+    return aluLogic(wordWrap(a, wordSize) | wordWrap(b, wordSize), wordSize)
+}
+
+AluResult aluXor(Long a, Long b, Int wordSize) {
+    return aluLogic(wordWrap(a, wordSize) ^ wordWrap(b, wordSize), wordSize)
+}
+
+// Kof has no `~` operator: complement is XOR with the word mask.
+AluResult aluNot(Long a, Int wordSize) {
+    return aluLogic(wordWrap(a, wordSize) ^ wordMask(wordSize), wordSize)
+}

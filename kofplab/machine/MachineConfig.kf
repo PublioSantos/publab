@@ -1,0 +1,16 @@
+package kofplab.machine
+
+// A KofVM variant is a configuration, not a different machine.
+// `wordSize` drives the arithmetic (Word.kf); `addressBits` and `memorySize`
+// describe the byte-addressable memory, which is independent of the word.
+record MachineConfig(String name, Int wordSize, Int memorySize, Int addressBits, Int entryPoint)
+
+// KofVM-8 — the variant implemented and validated in phase 1.
+// KofVM-16 and KofVM-32 are the same core with wordSize 16 / 32 (phases 3-4).
+MachineConfig kofvm8() {
+    return MachineConfig("KofVM-8", 8, 65536, 16, 0)
+}
+
+Int addressMask(MachineConfig config) {
+    return config.memorySize() - 1
+}

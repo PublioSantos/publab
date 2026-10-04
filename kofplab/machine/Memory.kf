@@ -1,0 +1,76 @@
+package kofplab.machine
+
+// Byte-addressable memory. Addresses are byte addresses, so a word occupies
+// `wordBytes(wordSize)` consecutive cells — the machine never assumes that a
+// word is one byte.
+//
+// Words are stored little-endian: the least significant byte at the lowest
+// address.
+
+// A throw lives in its own function on purpose: the Kof JS backend mishandles
+// a throw nested inside an if/else chain (see docs/architecture.md).
+void memoryFault(Int address, Int size) {
+    throw "memory address out of range: " + address + " (memory is " + size + " bytes)"
+}
+
+class Memory {
+    Int[] cells
+    Int size
+
+    constructor(Int size) {
+        this.size = size
+        this.cells = new Int[size]
+    }
+
+    Bool inRange(Int address) {
+        return address >= 0 && address < this.size
+    }
+
+    Int readByte(Int address) {
+        if (!this.inRange(address)) { memoryFault(address, this.size) }
+        return this.cells[address]
+    }
+
+    void writeByte(Int address, Int value) {
+        if (!this.inRange(address)) { memoryFault(address, this.size) }
+        this.cells[address] = value & 255
+    }
+
+    // Little-endian read of `bytes` consecutive cells.
+    Long readWord(Int address, Int bytes) {
+        var value: Long = 0 as Long
+        var i = 0
+        while (i < bytes) {
+            val b: Long = this.readByte(address + i) as Long
+            value = value | (b << (i * 8))
+            i++
+        }
+        return value
+    }
+
+    void writeWord(Int address, Int bytes, Long value) {
+        var i = 0
+        while (i < bytes) {
+            val b = (((value >>> (i * 8)) & (255 as Long)) as Int)
+            this.writeByte(address + i, b)
+            i++
+        }
+    }
+
+    void clear() {
+        var i = 0
+        while (i < this.size) {
+            this.cells[i] = 0
+            i++
+        }
+    }
+
+    // Copy a program image in at `address`, byte by byte.
+    void loadImage(List<Int> image, Int address) {
+        var i = 0
+        while (i < image.size) {
+            this.writeByte(address + i, image.get(i))
+            i++
+        }
+    }
+}

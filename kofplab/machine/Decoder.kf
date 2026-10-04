@@ -1,0 +1,79 @@
+package kofplab.machine
+
+// Fetch and decode. The engine never reads operand bytes by hand: it asks the
+// decoder, which reads the same table the assembler wrote with.
+//
+// Fields that a form does not use are zero (e.g. `address` on an ADD A, B).
+
+record Decoded(Int opcode, String mnemonic, Int form, Int reg1, Int reg2,
+               Long imm, Int address, Int length)
+
+void decodeFault(Int opcode, Int pc) {
+    throw "unknown opcode 0x" + toHex(opcode as Long, 2) + " at address 0x" + toHex(pc as Long, 4)
+}
+
+Decoded decodeAt(Memory mem, Int pc, MachineConfig config) {
+    val opcode = mem.readByte(pc)
+    val look = lookupOpcode(opcode)
+    if (!look.found()) { decodeFault(opcode, pc) }
+    val form = look.form()
+    val w = wordBytes(config.wordSize())
+    val a = addressBytes(config.addressBits())
+    val length = instructionLength(form, config.wordSize(), config.addressBits())
+    var reg1 = 0
+    var reg2 = 0
+    var imm: Long = 0 as Long
+    var address = 0
+    if (form == formReg()) {
+        reg1 = mem.readByte(pc + 1)
+    }
+    if (form == formRegImm()) {
+        reg1 = mem.readByte(pc + 1)
+        imm = mem.readWord(pc + 2, w)
+    }
+    if (form == formRegReg()) {
+        reg1 = mem.readByte(pc + 1)
+        reg2 = mem.readByte(pc + 2)
+    }
+    if (form == formRegAddr()) {
+        reg1 = mem.readByte(pc + 1)
+        address = (mem.readWord(pc + 2, a) as Int)
+    }
+    if (form == formAddrReg()) {
+        address = (mem.readWord(pc + 1, a) as Int)
+        reg1 = mem.readByte(pc + 1 + a)
+    }
+    if (form == formAddr()) {
+        address = (mem.readWord(pc + 1, a) as Int)
+    }
+    return Decoded(opcode, look.mnemonic(), form, reg1, reg2, imm, address, length)
+}
+
+// Text for the instruction the machine is about to execute. Rebuilt from the
+// decoded bytes, not from the source — what is shown is what is in memory.
+String disassemble(Decoded d, Int addressBits) {
+    val digits = addressBytes(addressBits) * 2
+    val form = d.form()
+    if (form == formNone()) {
+        return d.mnemonic()
+    }
+    if (form == formReg()) {
+        return d.mnemonic() + " " + registerName(d.reg1())
+    }
+    if (form == formRegImm()) {
+        return d.mnemonic() + " " + registerName(d.reg1()) + ", " + d.imm()
+    }
+    if (form == formRegReg()) {
+        return d.mnemonic() + " " + registerName(d.reg1()) + ", " + registerName(d.reg2())
+    }
+    if (form == formRegAddr()) {
+        return d.mnemonic() + " " + registerName(d.reg1()) + ", [0x" + toHex(d.address() as Long, digits) + "]"
+    }
+    if (form == formAddrReg()) {
+        return d.mnemonic() + " [0x" + toHex(d.address() as Long, digits) + "], " + registerName(d.reg1())
+    }
+    if (form == formAddr()) {
+        return d.mnemonic() + " 0x" + toHex(d.address() as Long, digits)
+    }
+    return d.mnemonic()
+}

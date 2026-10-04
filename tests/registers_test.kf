@@ -1,0 +1,44 @@
+package tests
+
+import kofplab.machine
+
+test "basic mode has A B C D" {
+    assert(basicRegisterCount() == 4)
+    assert(registerName(0) == "A")
+    assert(registerName(3) == "D")
+    assert(lookupRegister("a").found, "register names are case-insensitive")
+    assert(lookupRegister("a").id == 0)
+    assert(lookupRegister("Z").found == false)
+}
+
+test "advanced registers are named but not implemented" {
+    assert(isAdvancedRegisterName("X"))
+    assert(isAdvancedRegisterName("SP"))
+    assert(lookupRegister("X").found == false, "X is not reachable in basic mode")
+}
+
+test "a register write respects the word size" {
+    var r = RegisterFile(8, 4)
+    r.write(0, 270 as Long)
+    assert(r.read(0) == 14 as Long, "KofVM-8 stores only the low 8 bits")
+    var r16 = RegisterFile(16, 4)
+    r16.write(0, 270 as Long)
+    assert(r16.read(0) == 270 as Long)
+}
+
+test "registers start at zero and clear back to zero" {
+    var r = RegisterFile(8, 4)
+    assert(r.read(2) == 0 as Long)
+    r.write(2, 99 as Long)
+    assert(r.read(2) == 99 as Long)
+    r.clear()
+    assert(r.read(2) == 0 as Long)
+}
+
+test "flags start clear" {
+    var f = FlagSet()
+    assert(f.carry == false && f.zero == false && f.negative == false && f.overflow == false)
+    f.carry = true
+    f.clear()
+    assert(f.carry == false)
+}

@@ -1,0 +1,113 @@
+package tests
+
+import kofplab.machine
+
+test "ADD within the word" {
+    val r = aluAdd(10 as Long, 20 as Long, 8)
+    assert(r.value() == 30 as Long)
+    assert(r.carry() == false && r.zero() == false && r.negative() == false && r.overflow() == false)
+}
+
+test "ADD overflowing the word sets carry" {
+    val r = aluAdd(250 as Long, 20 as Long, 8)
+    assert(r.value() == 14 as Long, "270 stored in 8 bits is 14")
+    assert(r.carry(), "carry out of the word")
+    assert(r.zero() == false)
+    assert(r.negative() == false)
+    assert(r.overflow() == false, "250 + 20 is -6 + 20 signed: no signed overflow")
+}
+
+test "the same ADD in a wider word does not carry" {
+    val r16 = aluAdd(250 as Long, 20 as Long, 16)
+    assert(r16.value() == 270 as Long)
+    assert(r16.carry() == false)
+    val r32 = aluAdd(250 as Long, 20 as Long, 32)
+    assert(r32.value() == 270 as Long)
+    assert(r32.carry() == false)
+}
+
+test "ADD producing zero sets Z and C" {
+    val r = aluAdd(255 as Long, 1 as Long, 8)
+    assert(r.value() == 0 as Long)
+    assert(r.zero())
+    assert(r.carry())
+}
+
+test "ADD setting the sign bit sets N" {
+    val r = aluAdd(100 as Long, 50 as Long, 8)
+    assert(r.value() == 150 as Long)
+    assert(r.negative(), "150 has bit 7 set")
+}
+
+test "ADD with signed overflow" {
+    // 100 + 50 = 150, which as a signed 8-bit value is -106: two positive
+    // operands produced a negative result.
+    val r = aluAdd(100 as Long, 50 as Long, 8)
+    assert(r.overflow())
+    assert(r.carry() == false, "no unsigned carry: 150 fits in 8 bits")
+}
+
+test "SUB without borrow" {
+    val r = aluSub(30 as Long, 10 as Long, 8)
+    assert(r.value() == 20 as Long)
+    assert(r.carry() == false)
+    assert(r.overflow() == false)
+}
+
+test "SUB underflowing sets carry as borrow" {
+    val r = aluSub(10 as Long, 20 as Long, 8)
+    assert(r.value() == 246 as Long, "10 - 20 in 8 bits is 246 (-10)")
+    assert(r.carry(), "borrow")
+    assert(r.negative())
+}
+
+test "SUB to zero sets Z" {
+    val r = aluSub(20 as Long, 20 as Long, 8)
+    assert(r.value() == 0 as Long)
+    assert(r.zero())
+    assert(r.carry() == false)
+}
+
+test "SUB with signed overflow" {
+    // -128 - 1: the most negative 8-bit value cannot go lower.
+    val r = aluSub(128 as Long, 1 as Long, 8)
+    assert(r.value() == 127 as Long)
+    assert(r.overflow())
+}
+
+test "AND OR XOR NOT" {
+    assert(aluAnd(204 as Long, 170 as Long, 8).value() == 136 as Long)
+    assert(aluOr(204 as Long, 170 as Long, 8).value() == 238 as Long)
+    assert(aluXor(204 as Long, 170 as Long, 8).value() == 102 as Long)
+    assert(aluNot(204 as Long, 8).value() == 51 as Long)
+    assert(aluNot(0 as Long, 8).value() == 255 as Long)
+    assert(aluNot(0 as Long, 16).value() == 65535 as Long)
+}
+
+test "logic operations clear C and O and set Z and N" {
+    val z = aluAnd(204 as Long, 0 as Long, 8)
+    assert(z.zero() && z.carry() == false && z.overflow() == false)
+    val n = aluOr(128 as Long, 1 as Long, 8)
+    assert(n.negative())
+}
+
+test "instruction table is the single source of truth" {
+    assert(lookupInstruction("LOAD", formRegImm()).opcode() == 0x10)
+    assert(lookupInstruction("load", formRegImm()).found, "mnemonics are case-insensitive")
+    assert(lookupInstruction("LOAD", formAddr()).found == false, "LOAD has no address-only form")
+    assert(lookupOpcode(0x21).mnemonic() == "ADD")
+    assert(lookupOpcode(0x21).form() == formRegReg())
+    assert(lookupOpcode(0xEE).found == false)
+    assert(mnemonicExists("PRINT"))
+    assert(mnemonicExists("PUSH") == false, "PUSH is advanced mode, not implemented")
+    assert(isAdvancedMnemonic("PUSH"))
+}
+
+test "encoded instruction length follows the machine" {
+    assert(instructionLength(formNone(), 8, 16) == 1, "HALT")
+    assert(instructionLength(formRegImm(), 8, 16) == 3, "op + reg + 1 immediate byte")
+    assert(instructionLength(formRegImm(), 16, 16) == 4, "immediate grows with the word")
+    assert(instructionLength(formRegImm(), 32, 16) == 6)
+    assert(instructionLength(formRegReg(), 8, 16) == 3)
+    assert(instructionLength(formAddr(), 8, 16) == 3, "op + 2 address bytes")
+}

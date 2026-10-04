@@ -1,0 +1,29 @@
+package kofplab.machine
+
+// C / Z / N / O — computed by the execution engine, never by the interface.
+//
+//  C (Carry)    carry out of the word on ADD, borrow on SUB
+//  Z (Zero)     the stored result is zero
+//  N (Negative) the stored result has its sign bit set
+//  O (Overflow) signed (two's complement) overflow
+
+class FlagSet {
+    Bool carry
+    Bool zero
+    Bool negative
+    Bool overflow
+
+    constructor() {
+        this.carry = false
+        this.zero = false
+        this.negative = false
+        this.overflow = false
+    }
+
+    void clear() {
+        this.carry = false
+        this.zero = false
+        this.negative = false
+        this.overflow = false
+    }
+}

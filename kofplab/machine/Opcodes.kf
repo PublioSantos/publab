@@ -1,0 +1,129 @@
+package kofplab.machine
+
+// The instruction table — the single source of truth shared by the assembler
+// (which encodes) and the execution engine (which decodes). Neither side
+// carries its own copy of the opcode numbers.
+//
+// Encoding: one opcode byte, then the operands. The high nibble of the opcode
+// is the operation group and the low bits select the operand form, so the
+// encoding stays readable in a memory dump.
+//
+// An operand's width follows the machine: an immediate takes
+// wordBytes(wordSize) bytes, an address takes addressBytes(addressBits).
+
+Int formNone() { return 0 }       // HALT
+Int formReg() { return 1 }        // NOT A        / PRINT A
+Int formRegImm() { return 2 }     // LOAD A, 250
+Int formRegReg() { return 3 }     // ADD A, B
+Int formRegAddr() { return 4 }    // LOAD A, [16]
+Int formAddrReg() { return 5 }    // STORE [16], A
+Int formAddr() { return 6 }       // JMP loop
+
+Int addressBytes(Int addressBits) {
+    return addressBits / 8
+}
+
+record OpSpec(Int opcode, String mnemonic, Int form)
+
+// Basic Mode instruction set (section 11 of the specification).
+List<OpSpec> opcodeTable() {
+    // Seeded with the first entry instead of an annotated empty list: a
+    // package-local record type in a `List<T>` annotation is not qualified by
+    // the compiler and trips SEM010 (kof 0.5.0-beta).
+    var table = listOf(OpSpec(0x00, "HALT", formNone()))
+    table.add(OpSpec(0x10, "LOAD", formRegImm()))
+    table.add(OpSpec(0x11, "LOAD", formRegReg()))
+    table.add(OpSpec(0x12, "LOAD", formRegAddr()))
+    table.add(OpSpec(0x18, "STORE", formAddrReg()))
+    table.add(OpSpec(0x20, "ADD", formRegImm()))
+    table.add(OpSpec(0x21, "ADD", formRegReg()))
+    table.add(OpSpec(0x28, "SUB", formRegImm()))
+    table.add(OpSpec(0x29, "SUB", formRegReg()))
+    table.add(OpSpec(0x30, "AND", formRegImm()))
+    table.add(OpSpec(0x31, "AND", formRegReg()))
+    table.add(OpSpec(0x38, "OR", formRegImm()))
+    table.add(OpSpec(0x39, "OR", formRegReg()))
+    table.add(OpSpec(0x40, "XOR", formRegImm()))
+    table.add(OpSpec(0x41, "XOR", formRegReg()))
+    table.add(OpSpec(0x48, "NOT", formReg()))
+    table.add(OpSpec(0x50, "JMP", formAddr()))
+    table.add(OpSpec(0x51, "JZ", formAddr()))
+    table.add(OpSpec(0x52, "JC", formAddr()))
+    table.add(OpSpec(0x60, "PRINT", formReg()))
+    return table
+}
+
+record OpLookup(Bool found, Int opcode, String mnemonic, Int form)
+
+OpLookup lookupInstruction(String mnemonic, Int form) {
+    val upper = mnemonic.toUpperCase()
+    for (var spec in opcodeTable()) {
+        if (spec.mnemonic() == upper && spec.form() == form) {
+            return OpLookup(true, spec.opcode(), spec.mnemonic(), spec.form())
+        }
+    }
+    return OpLookup(false, 0, upper, form)
+}
+
+OpLookup lookupOpcode(Int opcode) {
+    for (var spec in opcodeTable()) {
+        if (spec.opcode() == opcode) {
+            return OpLookup(true, spec.opcode(), spec.mnemonic(), spec.form())
+        }
+    }
+    return OpLookup(false, opcode, "?", formNone())
+}
+
+Bool mnemonicExists(String mnemonic) {
+    val upper = mnemonic.toUpperCase()
+    for (var spec in opcodeTable()) {
+        if (spec.mnemonic() == upper) { return true }
+    }
+    return false
+}
+
+// Which operand forms a mnemonic accepts — used by the assembler to explain
+// what it expected instead of just rejecting the line.
+List<Int> formsForMnemonic(String mnemonic) {
+    val upper = mnemonic.toUpperCase()
+    var forms: List<Int> = listOf()
+    for (var spec in opcodeTable()) {
+        if (spec.mnemonic() == upper) { forms.add(spec.form()) }
+    }
+    return forms
+}
+
+// Advanced Mode instructions (section 12). NOT implemented in phases 1-2 —
+// listed so the assembler can say "not available yet" instead of
+// "unknown instruction".
+Bool isAdvancedMnemonic(String mnemonic) {
+    val upper = mnemonic.toUpperCase()
+    val advanced = listOf("PUSH", "POP", "CALL", "RET",
+        "SHL", "SHR", "ROL", "ROR", "JN", "JO", "JNZ", "JNC", "ENTER", "LEAVE")
+    return advanced.contains(upper)
+}
+
+// Total length in bytes of an encoded instruction of this form.
+Int instructionLength(Int form, Int wordSize, Int addressBits) {
+    val w = wordBytes(wordSize)
+    val a = addressBytes(addressBits)
+    if (form == formNone()) { return 1 }
+    if (form == formReg()) { return 2 }
+    if (form == formRegImm()) { return 2 + w }
+    if (form == formRegReg()) { return 3 }
+    if (form == formRegAddr()) { return 2 + a }
+    if (form == formAddrReg()) { return 2 + a }
+    if (form == formAddr()) { return 1 + a }
+    return 1
+}
+
+String formDescription(Int form) {
+    if (form == formNone()) { return "no operands" }
+    if (form == formReg()) { return "register" }
+    if (form == formRegImm()) { return "register, immediate" }
+    if (form == formRegReg()) { return "register, register" }
+    if (form == formRegAddr()) { return "register, [address]" }
+    if (form == formAddrReg()) { return "[address], register" }
+    if (form == formAddr()) { return "address or label" }
+    return "unknown"
+}

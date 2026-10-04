@@ -1,0 +1,56 @@
+package tests
+
+import kofplab.machine
+
+test "memory starts zeroed and is byte-addressable" {
+    var m = Memory(256)
+    assert(m.size == 256)
+    assert(m.readByte(0) == 0)
+    assert(m.readByte(255) == 0)
+    m.writeByte(16, 200)
+    assert(m.readByte(16) == 200)
+    assert(m.readByte(17) == 0, "neighbour cell untouched")
+}
+
+test "writeByte keeps a cell within one byte" {
+    var m = Memory(16)
+    m.writeByte(0, 300)
+    assert(m.readByte(0) == 44, "300 stored in a byte is 44")
+}
+
+test "words are little-endian over consecutive bytes" {
+    var m = Memory(64)
+    m.writeWord(8, 2, 270 as Long)
+    assert(m.readByte(8) == 14, "low byte first")
+    assert(m.readByte(9) == 1, "then the high byte")
+    assert(m.readWord(8, 2) == 270 as Long)
+}
+
+test "a 32-bit word occupies four cells" {
+    var m = Memory(64)
+    m.writeWord(0, 4, 4294967295 as Long)
+    assert(m.readByte(0) == 255)
+    assert(m.readByte(3) == 255)
+    assert(m.readWord(0, 4) == 4294967295 as Long)
+}
+
+test "out of range access is an error, not a silent wrap" {
+    var m = Memory(16)
+    var failed = false
+    try {
+        m.readByte(16)
+    } catch (String e) {
+        failed = true
+        assert(e.contains("out of range"))
+    }
+    assert(failed, "reading past the end must throw")
+}
+
+test "clear and loadImage" {
+    var m = Memory(32)
+    m.loadImage(listOf(1, 2, 3), 4)
+    assert(m.readByte(4) == 1)
+    assert(m.readByte(6) == 3)
+    m.clear()
+    assert(m.readByte(4) == 0)
+}

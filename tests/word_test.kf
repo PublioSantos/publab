@@ -1,0 +1,55 @@
+package tests
+
+import kofplab.machine
+
+test "mask and sign bit per word size" {
+    assert(wordMask(8) == 255 as Long, "8-bit mask")
+    assert(wordMask(16) == 65535 as Long, "16-bit mask")
+    assert(wordMask(32) == 4294967295 as Long, "32-bit mask")
+    assert(wordSignBit(8) == 128 as Long, "8-bit sign bit")
+    assert(wordSignBit(16) == 32768 as Long, "16-bit sign bit")
+}
+
+test "wordBytes" {
+    assert(wordBytes(8) == 1)
+    assert(wordBytes(16) == 2)
+    assert(wordBytes(32) == 4)
+}
+
+test "wrap truncates to the word" {
+    assert(wordWrap(270 as Long, 8) == 14 as Long, "270 in 8 bits is 14")
+    assert(wordWrap(270 as Long, 16) == 270 as Long, "270 fits in 16 bits")
+    assert(wordWrap(0 as Long, 8) == 0 as Long)
+    assert(wordWrap(255 as Long, 8) == 255 as Long)
+}
+
+test "wrap of a negative value is two's complement" {
+    assert(wordWrap((0 as Long) - (6 as Long), 8) == 250 as Long, "-6 in 8 bits is 250")
+    assert(wordWrap((0 as Long) - (1 as Long), 8) == 255 as Long)
+}
+
+test "negative flag follows the sign bit" {
+    assert(wordIsNegative(250 as Long, 8), "250 has bit 7 set")
+    assert(wordIsNegative(14 as Long, 8) == false, "14 does not")
+    assert(wordIsNegative(250 as Long, 16) == false, "250 in 16 bits is positive")
+}
+
+test "signed reading of a stored word" {
+    assert(wordToSigned(250 as Long, 8) == (0 as Long) - (6 as Long), "250 reads as -6")
+    assert(wordToSigned(14 as Long, 8) == 14 as Long)
+    assert(wordToSigned(250 as Long, 16) == 250 as Long)
+}
+
+test "limits per word size" {
+    assert(wordMaxUnsigned(8) == 255 as Long)
+    assert(wordMaxSigned(8) == 127 as Long)
+    assert(wordMinSigned(8) == (0 as Long) - (128 as Long))
+}
+
+test "hex and binary rendering" {
+    assert(wordToHex(14 as Long, 8) == "0E")
+    assert(wordToBin(14 as Long, 8) == "00001110")
+    assert(wordToHex(270 as Long, 16) == "010E")
+    assert(toHex(255 as Long, 2) == "FF")
+    assert(toBin(5 as Long, 4) == "0101")
+}

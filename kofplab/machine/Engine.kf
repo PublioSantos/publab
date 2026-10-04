@@ -1,0 +1,279 @@
+package kofplab.machine
+
+// The execution engine. It owns the real state of the machine; the debugger
+// and the interface only observe it through `snapshot()`.
+
+enum MachineStatus { Ready, Running, Paused, Halted, Error }
+
+String statusName(MachineStatus status) {
+    if (status == MachineStatus.Ready) { return "READY" }
+    if (status == MachineStatus.Running) { return "RUNNING" }
+    if (status == MachineStatus.Paused) { return "PAUSED" }
+    if (status == MachineStatus.Halted) { return "HALTED" }
+    return "ERROR"
+}
+
+// A complete, immutable reading of the machine at one instant.
+record MachineState(String machineName, Int wordSize, Int addressBits,
+                    List<String> registerNames, List<Long> registers,
+                    Bool carry, Bool zero, Bool negative, Bool overflow,
+                    Int pc, Int cycles, MachineStatus status, String errorMessage,
+                    List<String> output, String currentInstruction)
+
+List<String> emptyStringList() {
+    var l: List<String> = listOf()
+    return l
+}
+
+List<Int> emptyIntList() {
+    var l: List<Int> = listOf()
+    return l
+}
+
+List<String> copyStringList(List<String> source) {
+    var out: List<String> = listOf()
+    for (var s in source) { out.add(s) }
+    return out
+}
+
+class Machine {
+    MachineConfig config
+    RegisterFile registers
+    Memory memory
+    FlagSet flags
+    Int pc
+    Int cycles
+    MachineStatus status
+    String errorMessage
+    List<String> output
+    List<Int> image
+    Bool pauseRequested
+
+    constructor(MachineConfig config) {
+        this.config = config
+        this.registers = RegisterFile(config.wordSize(), basicRegisterCount())
+        this.memory = Memory(config.memorySize())
+        this.flags = FlagSet()
+        this.pc = config.entryPoint()
+        this.cycles = 0
+        this.status = MachineStatus.Ready
+        this.errorMessage = ""
+        this.output = emptyStringList()
+        this.image = emptyIntList()
+        this.pauseRequested = false
+    }
+
+    // Install a program image and bring the machine to READY.
+    void load(List<Int> image) {
+        this.image = image
+        this.reset()
+    }
+
+    // Restore the machine to the state it had right after `load`: memory
+    // rewritten from the image, everything else cleared.
+    void reset() {
+        this.memory.clear()
+        this.memory.loadImage(this.image, this.config.entryPoint())
+        this.registers.clear()
+        this.flags.clear()
+        this.pc = this.config.entryPoint()
+        this.cycles = 0
+        this.output = emptyStringList()
+        this.errorMessage = ""
+        this.pauseRequested = false
+        this.status = MachineStatus.Ready
+    }
+
+    Bool canRun() {
+        return this.status != MachineStatus.Halted && this.status != MachineStatus.Error
+    }
+
+    // Execute exactly one instruction. Returns false when the machine did not
+    // execute (already halted, or the instruction faulted).
+    Bool step() {
+        if (!this.canRun()) { return false }
+        val executed = this.executeNext()
+        if (executed && this.status == MachineStatus.Running) {
+            this.status = MachineStatus.Paused
+        }
+        return executed
+    }
+
+    // Run until HALT, a fault, a pause request, or the cycle budget.
+    // The budget is not decoration: a program can loop forever, and a UI must
+    // stay responsive. After `run`, status PAUSED means "did not finish".
+    Int run(Int maxCycles) {
+        var executed = 0
+        while (this.canRun() && executed < maxCycles) {
+            // A pause request is consumed by the run it stops, so it never
+            // poisons the next one.
+            if (this.pauseRequested) {
+                this.pauseRequested = false
+                this.status = MachineStatus.Paused
+                return executed
+            }
+            if (!this.executeNext()) { return executed }
+            executed = executed + 1
+        }
+        if (this.canRun()) { this.status = MachineStatus.Paused }
+        return executed
+    }
+
+    // Ask a running machine to stop at the next instruction boundary.
+    // `run` is synchronous here, so this is for a caller that drives the
+    // machine in slices (or from another thread) — phase 6 wires the UI to it.
+    void requestPause() {
+        this.pauseRequested = true
+        if (this.status == MachineStatus.Running) { this.status = MachineStatus.Paused }
+    }
+
+    void halt() {
+        this.status = MachineStatus.Halted
+    }
+
+    Bool executeNext() {
+        this.status = MachineStatus.Running
+        try {
+            val decoded = decodeAt(this.memory, this.pc, this.config)
+            this.execute(decoded)
+            this.cycles = this.cycles + 1
+            return true
+        } catch (String fault) {
+            this.status = MachineStatus.Error
+            this.errorMessage = fault
+            return false
+        }
+    }
+
+    void applyFlags(AluResult result) {
+        this.flags.carry = result.carry()
+        this.flags.zero = result.zero()
+        this.flags.negative = result.negative()
+        this.flags.overflow = result.overflow()
+    }
+
+    // The second operand of an arithmetic or logic instruction: an immediate
+    // or another register, depending on the form.
+    Long operandValue(Decoded d) {
+        if (d.form() == formRegImm()) { return d.imm() }
+        return this.registers.read(d.reg2())
+    }
+
+    void execute(Decoded d) {
+        val ws = this.config.wordSize()
+        val w = wordBytes(ws)
+        val next = this.pc + d.length()
+        val mnemonic = d.mnemonic()
+
+        if (mnemonic == "HALT") {
+            // PC stays on the HALT instruction: the machine stopped *here*.
+            this.status = MachineStatus.Halted
+            return
+        }
+        if (mnemonic == "LOAD") {
+            // LOAD and STORE move data; they do not touch the flags.
+            if (d.form() == formRegImm()) { this.registers.write(d.reg1(), d.imm()) }
+            if (d.form() == formRegReg()) { this.registers.write(d.reg1(), this.registers.read(d.reg2())) }
+            if (d.form() == formRegAddr()) { this.registers.write(d.reg1(), this.memory.readWord(d.address(), w)) }
+            this.pc = next
+            return
+        }
+        if (mnemonic == "STORE") {
+            this.memory.writeWord(d.address(), w, this.registers.read(d.reg1()))
+            this.pc = next
+            return
+        }
+        if (mnemonic == "ADD") {
+            val r = aluAdd(this.registers.read(d.reg1()), this.operandValue(d), ws)
+            this.registers.write(d.reg1(), r.value())
+            this.applyFlags(r)
+            this.pc = next
+            return
+        }
+        if (mnemonic == "SUB") {
+            val r = aluSub(this.registers.read(d.reg1()), this.operandValue(d), ws)
+            this.registers.write(d.reg1(), r.value())
+            this.applyFlags(r)
+            this.pc = next
+            return
+        }
+        if (mnemonic == "AND") {
+            val r = aluAnd(this.registers.read(d.reg1()), this.operandValue(d), ws)
+            this.registers.write(d.reg1(), r.value())
+            this.applyFlags(r)
+            this.pc = next
+            return
+        }
+        if (mnemonic == "OR") {
+            val r = aluOr(this.registers.read(d.reg1()), this.operandValue(d), ws)
+            this.registers.write(d.reg1(), r.value())
+            this.applyFlags(r)
+            this.pc = next
+            return
+        }
+        if (mnemonic == "XOR") {
+            val r = aluXor(this.registers.read(d.reg1()), this.operandValue(d), ws)
+            this.registers.write(d.reg1(), r.value())
+            this.applyFlags(r)
+            this.pc = next
+            return
+        }
+        if (mnemonic == "NOT") {
+            val r = aluNot(this.registers.read(d.reg1()), ws)
+            this.registers.write(d.reg1(), r.value())
+            this.applyFlags(r)
+            this.pc = next
+            return
+        }
+        if (mnemonic == "JMP") {
+            this.pc = d.address()
+            return
+        }
+        if (mnemonic == "JZ") {
+            if (this.flags.zero) { this.pc = d.address() } else { this.pc = next }
+            return
+        }
+        if (mnemonic == "JC") {
+            if (this.flags.carry) { this.pc = d.address() } else { this.pc = next }
+            return
+        }
+        if (mnemonic == "PRINT") {
+            // PRINT is an educational instruction of the KofVM, not a physical
+            // CPU instruction (section 13 of the specification).
+            this.output.add("" + this.registers.read(d.reg1()))
+            this.pc = next
+            return
+        }
+        this.unknownMnemonic(mnemonic)
+    }
+
+    void unknownMnemonic(String mnemonic) {
+        throw "instruction decoded but not implemented by the engine: " + mnemonic
+    }
+
+    // Text of the instruction at PC, rebuilt from memory.
+    String currentInstructionText() {
+        try {
+            val d = decodeAt(this.memory, this.pc, this.config)
+            return disassemble(d, this.config.addressBits())
+        } catch (String fault) {
+            return "?"
+        }
+    }
+
+    MachineState snapshot() {
+        var names: List<String> = listOf()
+        var values: List<Long> = listOf()
+        var i = 0
+        while (i < basicRegisterCount()) {
+            names.add(registerName(i))
+            values.add(this.registers.read(i))
+            i++
+        }
+        return MachineState(this.config.name(), this.config.wordSize(), this.config.addressBits(),
+            names, values,
+            this.flags.carry, this.flags.zero, this.flags.negative, this.flags.overflow,
+            this.pc, this.cycles, this.status, this.errorMessage,
+            copyStringList(this.output), this.currentInstructionText())
+    }
+}
