@@ -1,4 +1,4 @@
-; loops.kasm — a countdown, built from SUB, JZ and JMP.
+; loops.pasm — a countdown, built from SUB, JZ and JMP.
 ;
 ; The Basic Mode set has no JNZ (that is Advanced Mode, phase 8), so the loop
 ; tests for zero and jumps out, then jumps back unconditionally.

@@ -1,4 +1,4 @@
-package kofplab.machine
+package publab.machine
 
 // Basic Mode register set (section 8 of the specification): A, B, C, D.
 // PC is not here — it is an address, held by the machine itself, and does not
@@ -56,8 +56,8 @@ class RegisterFile {
         return this.values[id]
     }
 
-    // Every write goes through the word size — this is what makes a KofVM-8
-    // store 14 where a KofVM-16 stores 270.
+    // Every write goes through the word size — this is what makes a PubVM-8
+    // store 14 where a PubVM-16 stores 270.
     void write(Int id, Long value) {
         if (id < 0 || id >= this.count) { registerFault(id) }
         this.values[id] = wordWrap(value, this.wordSize)

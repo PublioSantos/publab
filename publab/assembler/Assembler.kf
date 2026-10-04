@@ -1,6 +1,6 @@
-package kofplab.assembler
+package publab.assembler
 
-import kofplab.machine
+import publab.machine
 
 // The assembler. Two passes:
 //
@@ -27,17 +27,17 @@ List<Int> newImage() {
 }
 
 List<Placed> emptyPlaced() {
-    var l: List<kofplab.assembler.Placed> = listOf()
+    var l: List<publab.assembler.Placed> = listOf()
     return l
 }
 
 List<Symbol> emptySymbols() {
-    var l: List<kofplab.assembler.Symbol> = listOf()
+    var l: List<publab.assembler.Symbol> = listOf()
     return l
 }
 
 List<SourceMapEntry> emptySourceMap() {
-    var l: List<kofplab.assembler.SourceMapEntry> = listOf()
+    var l: List<publab.assembler.SourceMapEntry> = listOf()
     return l
 }
 
@@ -122,6 +122,15 @@ AssemblyResult assembleSource(String source, MachineConfig config) {
         } else if (!mnemonicExists(mnemonic)) {
             diagnostics.add(errorAt("ASM001", instruction.line(), instruction.column(),
                 args1(mnemonic)))
+        } else if (mistypedRegister(instruction, accepted)) {
+            // An instruction that accepts no address form cannot take a bare
+            // name: it was meant to be a register.
+            for (var operand in instruction.operands()) {
+                if (operand.kind() == "label") {
+                    diagnostics.add(errorAt("ASM004", operand.line(), operand.column(),
+                        args1(operand.label())))
+                }
+            }
         } else {
             val guess = formFromOperands(instruction.operands())
             var resolvedForm = formNone()
@@ -223,6 +232,16 @@ AssemblyResult assembleSource(String source, MachineConfig config) {
     if (hasErrors(diagnostics)) { return failedAssembly(diagnostics) }
     return AssemblyResult(true, image, config.entryPoint(), image.size,
         diagnostics, sourceMap, symbols)
+}
+
+// True when a bare name appears as an operand of an instruction that has no
+// address form — the only way that happens is a misspelled register.
+Bool mistypedRegister(ParsedInstruction instruction, List<Int> acceptedForms) {
+    if (acceptedForms.contains(formAddr())) { return false }
+    for (var operand in instruction.operands()) {
+        if (operand.kind() == "label") { return true }
+    }
+    return false
 }
 
 Int firstDefinitionLine(List<LabelDef> labels, String name) {

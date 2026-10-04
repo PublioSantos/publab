@@ -1,4 +1,4 @@
-package kofplab.assembler
+package publab.assembler
 
 // The message catalogue. Adding a language means adding a branch here and
 // nowhere else; the rest of the assembler only ever produces codes.
@@ -61,7 +61,7 @@ String messageEn(String code) {
 }
 
 String hintEn(String code) {
-    if (code == "ASM001") { return "See the instruction list in docs/kofasm.md." }
+    if (code == "ASM001") { return "See the instruction list in docs/pubasm.md." }
     if (code == "ASM002") { return "Expected: {1}." }
     if (code == "ASM003") { return "" }
     if (code == "ASM004") { return "Basic Mode has the registers A, B, C and D." }
@@ -97,7 +97,7 @@ String messagePt(String code) {
 }
 
 String hintPt(String code) {
-    if (code == "ASM001") { return "Veja a lista de instruções em docs/kofasm.pt_BR.md." }
+    if (code == "ASM001") { return "Veja a lista de instruções em docs/pubasm.pt_BR.md." }
     if (code == "ASM002") { return "Esperado: {1}." }
     if (code == "ASM003") { return "" }
     if (code == "ASM004") { return "O Basic Mode tem os registradores A, B, C e D." }

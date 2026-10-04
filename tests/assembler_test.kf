@@ -1,10 +1,10 @@
 package tests
 
-import kofplab.machine
-import kofplab.assembler
+import publab.machine
+import publab.assembler
 
 AssemblyResult assemble8(String source) {
-    return assembleSource(source, kofvm8())
+    return assembleSource(source, pubvm8())
 }
 
 String errorsOf(String source) {
@@ -32,8 +32,8 @@ test "mnemonics and registers are case-insensitive" {
 }
 
 test "an immediate grows with the word size" {
-    val eight = assembleSource("LOAD A, 250\nHALT", kofvm8())
-    val sixteen = assembleSource("LOAD A, 250\nHALT", MachineConfig("KofVM-16", 16, 65536, 16, 0))
+    val eight = assembleSource("LOAD A, 250\nHALT", pubvm8())
+    val sixteen = assembleSource("LOAD A, 250\nHALT", MachineConfig("PubVM-16", 16, 65536, 16, 0))
     assert(eight.byteCount() == 4, "op + reg + 1 byte + HALT")
     assert(sixteen.byteCount() == 5, "op + reg + 2 bytes + HALT")
     assert(sixteen.image().get(2) == 250 && sixteen.image().get(3) == 0, "little-endian")
@@ -158,7 +158,7 @@ test "a wrong operand count is reported as a count" {
 }
 
 test "an address outside memory is rejected" {
-    val small = MachineConfig("KofVM-8/tiny", 8, 64, 16, 0)
+    val small = MachineConfig("PubVM-8/tiny", 8, 64, 16, 0)
     val r = assembleSource("JMP 0x100\nHALT", small)
     assert(r.ok() == false)
     val d = r.diagnostics().get(0)
@@ -169,7 +169,7 @@ test "an address outside memory is rejected" {
 }
 
 test "a program larger than memory is rejected" {
-    val tiny = MachineConfig("KofVM-8/tiny", 8, 4, 16, 0)
+    val tiny = MachineConfig("PubVM-8/tiny", 8, 4, 16, 0)
     val r = assembleSource("LOAD A, 1\nLOAD B, 2\nHALT", tiny)
     assert(r.ok() == false)
     assert(r.diagnostics().get(0).code() == "ASM013")
@@ -188,7 +188,7 @@ test "every operand form round-trips through the machine's own decoder" {
         + "AND A, B\nOR A, B\nXOR A, B\nNOT A\nPRINT A\nJMP done\ndone:\nHALT"
     val r = assemble8(source)
     assert(r.ok(), errorsOf(source))
-    var machine = Machine(kofvm8())
+    var machine = Machine(pubvm8())
     machine.load(r.image())
     var expected = listOf("LOAD A, 5", "LOAD B, A", "LOAD C, [0x0028]", "STORE [0x0028], D",
         "ADD A, B", "SUB A, 1", "AND A, B", "OR A, B", "XOR A, B", "NOT A", "PRINT A",
@@ -201,4 +201,20 @@ test "every operand form round-trips through the machine's own decoder" {
         if (expected.get(i) != "HALT") { assert(machine.step()) }
         i = i + 1
     }
+}
+
+test "a misspelled register is named as such" {
+    val r = assemble8("LOAD Q, 1\nHALT")
+    assert(r.ok() == false)
+    val d = r.diagnostics().get(0)
+    assert(d.code() == "ASM004")
+    assert(d.line() == 1 && d.column() == 6)
+    val en = renderDiagnostic(d, "en")
+    assert(en.contains("unknown register 'Q'"))
+    assert(en.contains("Basic Mode has the registers A, B, C and D."))
+    assert(renderDiagnostic(d, "pt").contains("registrador desconhecido 'Q'"))
+}
+
+test "a bare name is still a label where a jump accepts one" {
+    assert(assemble8("JMP somewhere\nsomewhere:\nHALT").ok(), "a label is not a register here")
 }

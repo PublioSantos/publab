@@ -1,6 +1,6 @@
 package tests
 
-import kofplab.machine
+import publab.machine
 
 test "mask and sign bit per word size" {
     assert(wordMask(8) == 255 as Long, "8-bit mask")

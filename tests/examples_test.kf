@@ -1,8 +1,8 @@
 package tests
 
 import kof.io
-import kofplab.machine
-import kofplab.assembler
+import publab.machine
+import publab.assembler
 
 // The examples are not illustrations: each one is assembled, executed and
 // checked here (section 39 of the specification).
@@ -12,12 +12,12 @@ record ExampleRun(Bool ok, List<String> output, String report)
 ExampleRun runExample(String path) {
     String? source = File(path).readText()
     if (source != null) {
-        val assembled = assembleSource(source, kofvm8())
+        val assembled = assembleSource(source, pubvm8())
         if (!assembled.ok()) {
             return ExampleRun(false, emptyStringList(),
                 "did not assemble:\n" + renderDiagnostics(assembled.diagnostics(), "en"))
         }
-        var machine = Machine(kofvm8())
+        var machine = Machine(pubvm8())
         machine.load(assembled.image())
         machine.run(1000)
         if (statusName(machine.status) != "HALTED") {
@@ -46,32 +46,32 @@ void checkExample(String name, String expectedOutput) {
             + joinOutput(run.output()) + "]")
 }
 
-test "hello.kasm" {
-    checkExample("hello.kasm", "1")
+test "hello.pasm" {
+    checkExample("hello.pasm", "1")
 }
 
-test "addition.kasm" {
-    checkExample("addition.kasm", "30")
+test "addition.pasm" {
+    checkExample("addition.pasm", "30")
 }
 
-test "overflow.kasm prints 14 on KofVM-8" {
-    checkExample("overflow.kasm", "14")
+test "overflow.pasm prints 14 on PubVM-8" {
+    checkExample("overflow.pasm", "14")
 }
 
-test "loops.kasm counts down" {
-    checkExample("loops.kasm", "3,2,1,0")
+test "loops.pasm counts down" {
+    checkExample("loops.pasm", "3,2,1,0")
 }
 
-test "memory.kasm round-trips through memory" {
-    checkExample("memory.kasm", "42")
+test "memory.pasm round-trips through memory" {
+    checkExample("memory.pasm", "42")
 }
 
-test "memory.kasm really leaves 42 at address 0x80" {
-    String? source = File("examples/memory.kasm").readText()
+test "memory.pasm really leaves 42 at address 0x80" {
+    String? source = File("examples/memory.pasm").readText()
     if (source != null) {
-        val assembled = assembleSource(source, kofvm8())
+        val assembled = assembleSource(source, pubvm8())
         assert(assembled.ok())
-        var machine = Machine(kofvm8())
+        var machine = Machine(pubvm8())
         machine.load(assembled.image())
         machine.run(1000)
         assert(machine.memory.readByte(128) == 42)

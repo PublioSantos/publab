@@ -1,6 +1,6 @@
 package tests
 
-import kofplab.machine
+import publab.machine
 
 test "ADD within the word" {
     val r = aluAdd(10 as Long, 20 as Long, 8)

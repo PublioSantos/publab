@@ -1,6 +1,6 @@
 package tests
 
-import kofplab.machine
+import publab.machine
 
 // Phase 1 proves the machine on its own: these programs are hand-encoded
 // byte by byte, with no assembler involved.
@@ -15,14 +15,14 @@ List<Int> goldenImage() {
     return listOf(0x10, 0x00, 250, 0x10, 0x01, 20, 0x21, 0x00, 0x01, 0x60, 0x00, 0x00)
 }
 
-Machine loadedKofvm8(List<Int> image) {
-    var m = Machine(kofvm8())
+Machine loadedPubvm8(List<Int> image) {
+    var m = Machine(pubvm8())
     m.load(image)
     return m
 }
 
 test "a loaded machine is READY with the program in memory" {
-    var m = loadedKofvm8(goldenImage())
+    var m = loadedPubvm8(goldenImage())
     assert(statusName(m.status) == "READY")
     assert(m.pc == 0)
     assert(m.cycles == 0)
@@ -32,7 +32,7 @@ test "a loaded machine is READY with the program in memory" {
 }
 
 test "step executes exactly one instruction" {
-    var m = loadedKofvm8(goldenImage())
+    var m = loadedPubvm8(goldenImage())
     assert(m.step())
     assert(m.registers.read(0) == 250 as Long, "A = 250")
     assert(m.registers.read(1) == 0 as Long, "B untouched")
@@ -43,14 +43,14 @@ test "step executes exactly one instruction" {
 }
 
 test "LOAD does not change the flags" {
-    var m = loadedKofvm8(goldenImage())
+    var m = loadedPubvm8(goldenImage())
     m.step()
     assert(m.flags.carry == false && m.flags.zero == false)
     assert(m.flags.negative == false && m.flags.overflow == false)
 }
 
-test "the ADD of the golden test, step by step, on KofVM-8" {
-    var m = loadedKofvm8(goldenImage())
+test "the ADD of the golden test, step by step, on PubVM-8" {
+    var m = loadedPubvm8(goldenImage())
     m.step()
     m.step()
     assert(m.registers.read(0) == 250 as Long)
@@ -66,7 +66,7 @@ test "the ADD of the golden test, step by step, on KofVM-8" {
 }
 
 test "PRINT writes to the educational output and HALT stops the machine" {
-    var m = loadedKofvm8(goldenImage())
+    var m = loadedPubvm8(goldenImage())
     val executed = m.run(100)
     assert(executed == 5, "five instructions")
     assert(statusName(m.status) == "HALTED")
@@ -77,7 +77,7 @@ test "PRINT writes to the educational output and HALT stops the machine" {
 }
 
 test "a halted machine does not step again" {
-    var m = loadedKofvm8(goldenImage())
+    var m = loadedPubvm8(goldenImage())
     m.run(100)
     assert(m.cycles == 5)
     assert(m.step() == false)
@@ -85,7 +85,7 @@ test "a halted machine does not step again" {
 }
 
 test "reset restores the machine and keeps the program" {
-    var m = loadedKofvm8(goldenImage())
+    var m = loadedPubvm8(goldenImage())
     m.run(100)
     m.reset()
     assert(statusName(m.status) == "READY")
@@ -102,7 +102,7 @@ test "reset also undoes what the program wrote to memory" {
     //   LOAD A, 7      10 00 07
     //   STORE [32], A  18 20 00 00
     //   HALT           00
-    var m = loadedKofvm8(listOf(0x10, 0x00, 7, 0x18, 0x20, 0x00, 0x00, 0x00))
+    var m = loadedPubvm8(listOf(0x10, 0x00, 7, 0x18, 0x20, 0x00, 0x00, 0x00))
     m.run(100)
     assert(m.memory.readByte(32) == 7)
     m.reset()
@@ -114,7 +114,7 @@ test "LOAD from memory and STORE to memory" {
     //   STORE [64], A   18 40 00 00
     //   LOAD B, [64]    12 01 40 00
     //   HALT            00
-    var m = loadedKofvm8(listOf(0x10, 0x00, 200, 0x18, 0x40, 0x00, 0x00,
+    var m = loadedPubvm8(listOf(0x10, 0x00, 200, 0x18, 0x40, 0x00, 0x00,
                                 0x12, 0x01, 0x40, 0x00, 0x00))
     m.run(100)
     assert(statusName(m.status) == "HALTED")
@@ -128,7 +128,7 @@ test "JMP, JZ taken and JZ not taken" {
     //   JZ   10        51 0A 00     -> taken, jumps to 0x0A
     //   PRINT A        60 00        (skipped)
     //   HALT           00           at 0x0A
-    var taken = loadedKofvm8(listOf(0x10, 0x00, 1, 0x28, 0x00, 1, 0x51, 0x09, 0x00, 0x00, 0x60, 0x00))
+    var taken = loadedPubvm8(listOf(0x10, 0x00, 1, 0x28, 0x00, 1, 0x51, 0x09, 0x00, 0x00, 0x60, 0x00))
     taken.run(100)
     assert(statusName(taken.status) == "HALTED")
     assert(taken.output.size == 0, "the PRINT after the HALT never ran")
@@ -139,7 +139,7 @@ test "JMP, JZ taken and JZ not taken" {
     //   JZ   09        51 09 00     -> not taken
     //   PRINT A        60 00
     //   HALT           00
-    var notTaken = loadedKofvm8(listOf(0x10, 0x00, 5, 0x28, 0x00, 1, 0x51, 0x0C, 0x00, 0x60, 0x00, 0x00))
+    var notTaken = loadedPubvm8(listOf(0x10, 0x00, 5, 0x28, 0x00, 1, 0x51, 0x0C, 0x00, 0x60, 0x00, 0x00))
     notTaken.run(100)
     assert(notTaken.output.size == 1, "execution fell through to the PRINT")
     assert(notTaken.output.get(0) == "4")
@@ -151,7 +151,7 @@ test "JC jumps on carry" {
     //   JC   0C        52 0C 00     -> taken (to the HALT at 0x0C)
     //   PRINT A        60 00
     //   HALT           00
-    var m = loadedKofvm8(listOf(0x10, 0x00, 250, 0x20, 0x00, 20, 0x52, 0x0C, 0x00, 0x60, 0x00, 0x00, 0x00))
+    var m = loadedPubvm8(listOf(0x10, 0x00, 250, 0x20, 0x00, 20, 0x52, 0x0C, 0x00, 0x60, 0x00, 0x00, 0x00))
     m.run(100)
     assert(m.flags.carry)
     assert(m.pc == 12, "jumped over the PRINT")
@@ -160,7 +160,7 @@ test "JC jumps on carry" {
 
 test "the cycle budget stops an endless loop instead of hanging" {
     //   JMP 0          50 00 00
-    var m = loadedKofvm8(listOf(0x50, 0x00, 0x00))
+    var m = loadedPubvm8(listOf(0x50, 0x00, 0x00))
     val executed = m.run(50)
     assert(executed == 50, "the budget bounded the run")
     assert(statusName(m.status) == "PAUSED", "PAUSED means it did not finish")
@@ -169,7 +169,7 @@ test "the cycle budget stops an endless loop instead of hanging" {
 }
 
 test "an unknown opcode is an ERROR with a message, not a crash" {
-    var m = loadedKofvm8(listOf(0xEE, 0x00))
+    var m = loadedPubvm8(listOf(0xEE, 0x00))
     assert(m.step() == false)
     assert(statusName(m.status) == "ERROR")
     assert(m.errorMessage.contains("unknown opcode"))
@@ -180,9 +180,9 @@ test "an unknown opcode is an ERROR with a message, not a crash" {
 test "an out-of-range memory access is an ERROR" {
     //   LOAD A, [0xFFFF] reads one byte at the last address: valid.
     //   STORE [0xFFFF], A with a 16-bit word would run off the end, but
-    //   KofVM-8 words are one byte, so instead force the fault with a
+    //   PubVM-8 words are one byte, so instead force the fault with a
     //   machine whose memory is smaller than the address operand.
-    var small = Machine(MachineConfig("KofVM-8/tiny", 8, 64, 16, 0))
+    var small = Machine(MachineConfig("PubVM-8/tiny", 8, 64, 16, 0))
     small.load(listOf(0x12, 0x00, 0x00, 0x02, 0x00))
     assert(small.step() == false)
     assert(statusName(small.status) == "ERROR")
@@ -190,7 +190,7 @@ test "an out-of-range memory access is an ERROR" {
 }
 
 test "halt() stops the machine from the outside" {
-    var m = loadedKofvm8(goldenImage())
+    var m = loadedPubvm8(goldenImage())
     m.step()
     m.halt()
     assert(statusName(m.status) == "HALTED")
@@ -198,7 +198,7 @@ test "halt() stops the machine from the outside" {
 }
 
 test "requestPause stops a run at an instruction boundary" {
-    var m = loadedKofvm8(listOf(0x50, 0x00, 0x00))
+    var m = loadedPubvm8(listOf(0x50, 0x00, 0x00))
     m.requestPause()
     assert(m.run(1000) == 0, "the pending pause stopped the run before any cycle")
     assert(statusName(m.status) == "PAUSED")
@@ -208,10 +208,10 @@ test "requestPause stops a run at an instruction boundary" {
 }
 
 test "snapshot reports the real state" {
-    var m = loadedKofvm8(goldenImage())
+    var m = loadedPubvm8(goldenImage())
     m.run(100)
     val s = m.snapshot()
-    assert(s.machineName() == "KofVM-8")
+    assert(s.machineName() == "PubVM-8")
     assert(s.wordSize() == 8)
     assert(s.registerNames().get(0) == "A")
     assert(s.registers().get(0) == 14 as Long)
@@ -225,7 +225,7 @@ test "snapshot reports the real state" {
 }
 
 test "a snapshot does not change when the machine moves on" {
-    var m = loadedKofvm8(goldenImage())
+    var m = loadedPubvm8(goldenImage())
     m.run(100)
     val before = m.snapshot()
     m.reset()
@@ -234,12 +234,12 @@ test "a snapshot does not change when the machine moves on" {
 }
 
 test "the disassembler reads back every operand form" {
-    var m = loadedKofvm8(listOf(0x48, 0x02))
+    var m = loadedPubvm8(listOf(0x48, 0x02))
     assert(m.currentInstructionText() == "NOT C")
-    var j = loadedKofvm8(listOf(0x50, 0x34, 0x12))
+    var j = loadedPubvm8(listOf(0x50, 0x34, 0x12))
     assert(j.currentInstructionText() == "JMP 0x1234")
-    var s = loadedKofvm8(listOf(0x18, 0x10, 0x00, 0x03))
+    var s = loadedPubvm8(listOf(0x18, 0x10, 0x00, 0x03))
     assert(s.currentInstructionText() == "STORE [0x0010], D")
-    var l = loadedKofvm8(listOf(0x12, 0x01, 0x20, 0x00))
+    var l = loadedPubvm8(listOf(0x12, 0x01, 0x20, 0x00))
     assert(l.currentInstructionText() == "LOAD B, [0x0020]")
 }

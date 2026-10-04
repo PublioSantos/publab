@@ -1,4 +1,4 @@
-package kofplab.machine
+package publab.machine
 
 // C / Z / N / O — computed by the execution engine, never by the interface.
 //

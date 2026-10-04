@@ -1,4 +1,4 @@
-package kofplab.machine
+package publab.machine
 
 // Fetch and decode. The engine never reads operand bytes by hand: it asks the
 // decoder, which reads the same table the assembler wrote with.

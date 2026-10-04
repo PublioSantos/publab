@@ -1,7 +1,7 @@
 package tests
 
-import kofplab.machine
-import kofplab.assembler
+import publab.machine
+import publab.assembler
 
 ParseResult parseSource(String source) {
     return parseTokens(lexSource(source).tokens())

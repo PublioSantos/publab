@@ -1,0 +1,37 @@
+package publab.app
+
+// The project's identity, in one place. The interface (phase 5) renders these
+// values instead of carrying its own copies, so the attribution to the Kof
+// language cannot drift out of the UI or be forgotten on a screen.
+
+String productName() {
+    return "PubLab"
+}
+
+String productTagline() {
+    return "Interactive Computer Architecture Laboratory"
+}
+
+String productSlogan() {
+    return "See the machine."
+}
+
+// Shown on screen, next to the product name.
+String poweredByLabel() {
+    return "Powered by: Kof"
+}
+
+String poweredByUrl() {
+    return "https://github.com/KofLang/Kof4j"
+}
+
+String poweredByName() {
+    return "Kof"
+}
+
+String taglineIn(String language) {
+    if (language == "pt" || language == "pt_BR" || language == "pt-BR") {
+        return "Laboratório Interativo de Arquitetura de Computadores"
+    }
+    return productTagline()
+}

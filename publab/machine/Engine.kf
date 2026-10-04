@@ -1,4 +1,4 @@
-package kofplab.machine
+package publab.machine
 
 // The execution engine. It owns the real state of the machine; the debugger
 // and the interface only observe it through `snapshot()`.
@@ -238,7 +238,7 @@ class Machine {
             return
         }
         if (mnemonic == "PRINT") {
-            // PRINT is an educational instruction of the KofVM, not a physical
+            // PRINT is an educational instruction of the PubVM, not a physical
             // CPU instruction (section 13 of the specification).
             this.output.add("" + this.registers.read(d.reg1()))
             this.pc = next

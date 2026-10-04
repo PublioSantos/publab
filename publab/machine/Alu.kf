@@ -1,4 +1,4 @@
-package kofplab.machine
+package publab.machine
 
 // The arithmetic and logic unit. It produces the stored value AND the four
 // flags together, from the word size — the interface never computes a flag.

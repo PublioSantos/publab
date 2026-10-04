@@ -1,6 +1,6 @@
 package tests
 
-import kofplab.machine
+import publab.machine
 
 test "memory starts zeroed and is byte-addressable" {
     var m = Memory(256)

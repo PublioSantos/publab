@@ -1,4 +1,4 @@
-package kofplab.machine
+package publab.machine
 
 // Byte-addressable memory. Addresses are byte addresses, so a word occupies
 // `wordBytes(wordSize)` consecutive cells — the machine never assumes that a

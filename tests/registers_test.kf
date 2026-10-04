@@ -1,6 +1,6 @@
 package tests
 
-import kofplab.machine
+import publab.machine
 
 test "basic mode has A B C D" {
     assert(basicRegisterCount() == 4)
@@ -20,7 +20,7 @@ test "advanced registers are named but not implemented" {
 test "a register write respects the word size" {
     var r = RegisterFile(8, 4)
     r.write(0, 270 as Long)
-    assert(r.read(0) == 14 as Long, "KofVM-8 stores only the low 8 bits")
+    assert(r.read(0) == 14 as Long, "PubVM-8 stores only the low 8 bits")
     var r16 = RegisterFile(16, 4)
     r16.write(0, 270 as Long)
     assert(r16.read(0) == 270 as Long)

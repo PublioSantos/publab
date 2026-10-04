@@ -1,5 +1,5 @@
 [project]
-name = "kofplab"
+name = "publab"
 
 [backend]
 target = "jvm"

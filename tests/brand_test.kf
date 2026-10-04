@@ -1,0 +1,16 @@
+package tests
+
+import publab.app
+
+test "the product identity" {
+    assert(productName() == "PubLab")
+    assert(productSlogan() == "See the machine.")
+    assert(taglineIn("en") == "Interactive Computer Architecture Laboratory")
+    assert(taglineIn("pt") == "Laboratório Interativo de Arquitetura de Computadores")
+}
+
+test "the Kof attribution shown on screen" {
+    assert(poweredByLabel() == "Powered by: Kof")
+    assert(poweredByName() == "Kof")
+    assert(poweredByUrl() == "https://github.com/KofLang/Kof4j")
+}

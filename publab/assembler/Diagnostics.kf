@@ -1,4 +1,4 @@
-package kofplab.assembler
+package publab.assembler
 
 // A diagnostic carries a CODE and its arguments, never a finished sentence:
 // the text is produced on demand in the requested language (section 40).
@@ -10,7 +10,7 @@ record Diagnostic(String severity, String code, Int line, Int column, List<Strin
 // is not qualified by the compiler and trips SEM010 (kof 0.5.0-beta), so the
 // qualified name is spelled out once, here.
 List<Diagnostic> emptyDiagnostics() {
-    var l: List<kofplab.assembler.Diagnostic> = listOf()
+    var l: List<publab.assembler.Diagnostic> = listOf()
     return l
 }
 

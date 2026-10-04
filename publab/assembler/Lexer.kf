@@ -1,8 +1,8 @@
-package kofplab.assembler
+package publab.assembler
 
-import kofplab.machine
+import publab.machine
 
-// KofASM lexer. One instruction per line, so the end of a line is a real
+// PubASM lexer. One instruction per line, so the end of a line is a real
 // token. A comment starts with ';' or '//'.
 //
 // Token kinds: ident, number, comma, colon, lbracket, rbracket, eol, eof.
@@ -12,7 +12,7 @@ record Token(String kind, String text, Long value, Int line, Int column)
 record LexResult(List<Token> tokens, List<Diagnostic> diagnostics)
 
 List<Token> emptyTokens() {
-    var l: List<kofplab.assembler.Token> = listOf()
+    var l: List<publab.assembler.Token> = listOf()
     return l
 }
 
@@ -42,7 +42,7 @@ Int hexDigitValue(Char c) {
     }
 }
 
-// The widest literal KofASM accepts before the word-size check (ASM005) takes
+// The widest literal PubASM accepts before the word-size check (ASM005) takes
 // over. Keeps a long input from overflowing silently.
 Long literalCeiling() {
     return 4294967295 as Long

@@ -1,6 +1,6 @@
-package kofplab.machine
+package publab.machine
 
-// Word-size arithmetic — the single place where KofVM's word width is applied.
+// Word-size arithmetic — the single place where PubVM's word width is applied.
 // Every value the machine stores passes through here, so an 8-, 16- or 32-bit
 // machine is a parameter, never a separate implementation.
 //

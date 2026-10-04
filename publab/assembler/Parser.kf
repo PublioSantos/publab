@@ -1,8 +1,8 @@
-package kofplab.assembler
+package publab.assembler
 
-import kofplab.machine
+import publab.machine
 
-// KofASM parser. Produces the shape of each line — mnemonic plus operands —
+// PubASM parser. Produces the shape of each line — mnemonic plus operands —
 // and the label definitions. It does NOT decide whether the instruction
 // exists: that is the assembler's job, against the opcode table.
 //
@@ -20,17 +20,17 @@ record ParseResult(List<ParsedInstruction> instructions, List<LabelDef> labels,
                    List<Diagnostic> diagnostics)
 
 List<Operand> emptyOperands() {
-    var l: List<kofplab.assembler.Operand> = listOf()
+    var l: List<publab.assembler.Operand> = listOf()
     return l
 }
 
 List<ParsedInstruction> emptyInstructions() {
-    var l: List<kofplab.assembler.ParsedInstruction> = listOf()
+    var l: List<publab.assembler.ParsedInstruction> = listOf()
     return l
 }
 
 List<LabelDef> emptyLabels() {
-    var l: List<kofplab.assembler.LabelDef> = listOf()
+    var l: List<publab.assembler.LabelDef> = listOf()
     return l
 }
 

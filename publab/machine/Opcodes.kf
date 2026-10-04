@@ -1,4 +1,4 @@
-package kofplab.machine
+package publab.machine
 
 // The instruction table — the single source of truth shared by the assembler
 // (which encodes) and the execution engine (which decodes). Neither side
