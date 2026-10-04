@@ -50,6 +50,8 @@ List<OpSpec> opcodeTable() {
     table.add(OpSpec(0x51, "JZ", formAddr()))
     table.add(OpSpec(0x52, "JC", formAddr()))
     table.add(OpSpec(0x60, "PRINT", formReg()))
+    table.add(OpSpec(0x70, "PUSH", formReg()))
+    table.add(OpSpec(0x71, "POP", formReg()))
     return table
 }
 
@@ -93,12 +95,14 @@ List<Int> formsForMnemonic(String mnemonic) {
     return forms
 }
 
-// Advanced Mode instructions (section 12). NOT implemented in phases 1-2 —
-// listed so the assembler can say "not available yet" instead of
+// Advanced Mode instructions (section 12) still NOT implemented — Phase 8
+// stage A added PUSH/POP (and the X/Y/SP/FP registers); CALL, RET, the
+// shifts/rotates and the remaining conditional jumps are later stages.
+// Listed so the assembler can say "not available yet" instead of
 // "unknown instruction".
 Bool isAdvancedMnemonic(String mnemonic) {
     val upper = mnemonic.toUpperCase()
-    val advanced = listOf("PUSH", "POP", "CALL", "RET",
+    val advanced = listOf("CALL", "RET",
         "SHL", "SHR", "ROL", "ROR", "JN", "JO", "JNZ", "JNC", "ENTER", "LEAVE")
     return advanced.contains(upper)
 }

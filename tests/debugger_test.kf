@@ -179,10 +179,12 @@ test "registers and flags carry a discreet change marker" {
     val after = machine.snapshot()
 
     val lines = registerLinesWithChanges(before, after)
-    assert(lines.size == 4)
+    assert(lines.size == 6, "A, B, C, D, X, Y")
     assert(lines.get(0).startsWith("*A"), lines.get(0))
     assert(lines.get(1).startsWith(" B"), lines.get(1))
     assert(lines.get(2).startsWith(" C"), lines.get(2))
+    assert(lines.get(4).startsWith(" X"), lines.get(4))
+    assert(lines.get(5).startsWith(" Y"), lines.get(5))
     // The marker is one character, so the columns are the unmarked line's.
     assert(lines.get(0).length == lines.get(1).length)
     assert(lines.get(0).contains("DEC  14"), lines.get(0))
@@ -310,7 +312,7 @@ test "the controller reports the source line, and the source it assembled" {
     labStep()
     assert(labSourceLine() == "LINE 3    ADD A, B", labSourceLine())
     // A failed assembly leaves no map and no source to point at.
-    labAssemble("PUSH A\n")
+    labAssemble("CALL A\n")
     assert(labSourceMap().size == 0)
     assert(labAssembledSource() == "")
 }

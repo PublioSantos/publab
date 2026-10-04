@@ -64,8 +64,55 @@ Basic Mode has four general registers, all of them word-sized:
 `PC` is held by the machine itself, not by the register file: it is an
 **address**, so it follows the address size (16 bits) and not the word size.
 
-`X`, `Y`, `SP` and `FP` belong to Advanced Mode (phase 8) and are **not
-implemented**. Their names are reserved so the assembler can say so.
+`X` and `Y` belong to Advanced Mode (phase 8, stage A) and **are
+implemented**: two more word-sized general registers, ids 4 and 5, usable
+anywhere A-D are.
+
+`SP` and `FP` also belong to Advanced Mode. `SP` **is implemented**, but as
+an address next to `PC`, not as a word-sized register (section "Stack"
+below) — it has to hold `memorySize`, one past the top of memory, which does
+not fit an 8-bit or 16-bit word. `FP` exists as the same kind of address
+field, initialized to 0, but nothing reads or writes it yet: it is reserved
+for `CALL`/`RET`/`ENTER`/`LEAVE`, a later stage. Neither is reachable as a
+general operand register — the assembler rejects `SP`/`FP` the same way it
+always rejected every Advanced Mode name, with `ASM014`.
+
+## Stack
+
+Advanced Mode, stage A: `PUSH` and `POP`.
+
+```
+SP initial = memorySize   (one past the top of memory — not a valid address)
+wordBytes  = wordSize / 8
+```
+
+The stack grows toward **lower** addresses, from the top of memory down. One
+core, one rule, for all three word sizes — there is no per-variant stack
+logic.
+
+`PUSH reg`:
+```
+SP = SP - wordBytes
+MEM[SP] = reg
+```
+checked first: if `SP - wordBytes < 0`, the push has no room left and the
+machine faults with `ERROR` ("stack overflow"), the same way an unknown
+opcode or an out-of-range memory access does — never a silent wrap.
+
+`POP reg`:
+```
+reg = MEM[SP]
+SP = SP + wordBytes
+```
+checked first: if `SP >= memorySize`, nothing has been pushed and the machine
+faults with `ERROR` ("stack underflow").
+
+`PUSH` and `POP` touch no flag and no register other than their own operand.
+`reset()` puts `SP` back at `memorySize` and `FP` back at 0, like every other
+piece of state.
+
+`CALL`, `RET`, `ENTER` and `LEAVE` will use this same stack; they are a later
+stage of Advanced Mode, not yet implemented.
 
 ## Flags
 
@@ -150,8 +197,9 @@ LOAD  STORE  ADD  SUB  AND  OR  XOR  NOT  JMP  JZ  JC  PRINT  HALT
 instruction (section 13 of the specification). It appends the register's
 stored value, in unsigned decimal, to the machine's output.
 
-Advanced Mode (`PUSH`, `POP`, `CALL`, `RET`, shifts, rotates, `JN`, `JO`,
-`JNZ`, `JNC`, `ENTER`, `LEAVE`) is **not implemented**.
+Advanced Mode, stage A: `PUSH` and `POP` (see "Stack" above). `CALL`, `RET`,
+shifts, rotates, `JN`, `JO`, `JNZ`, `JNC`, `ENTER` and `LEAVE` are **not
+implemented** yet.
 
 ## Encoding
 
@@ -184,6 +232,8 @@ the low bits select the operand form, which keeps a memory dump readable.
 | `0x51` | `JZ addr` | `op addr:A` | 1+A |
 | `0x52` | `JC addr` | `op addr:A` | 1+A |
 | `0x60` | `PRINT reg` | `op reg` | 2 |
+| `0x70` | `PUSH reg` | `op reg` | 2 |
+| `0x71` | `POP reg` | `op reg` | 2 |
 
 Immediates and addresses are little-endian. Immediate width follows the word
 size, so **the same source produces a different image on each variant** —

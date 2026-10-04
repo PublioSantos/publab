@@ -38,6 +38,9 @@ class Ui {
     static Label regB = Label("")
     static Label regC = Label("")
     static Label regD = Label("")
+    // X and Y: Advanced Mode, phase 8 stage A.
+    static Label regX = Label("")
+    static Label regY = Label("")
 
     static Label sourceTitle = Label("")
     static Label registersTitle = Label("")
@@ -57,9 +60,15 @@ class Ui {
     static Label memoryDump = Label("")
     static Label changesTitle = Label("")
     static Label changes = Label("")
-    static Label stackNote = Label("")
     static Label viewTitle = Label("")
     static Select memoryModes = Select(listOf("HEX"))
+
+    // The stack (Advanced Mode, phase 8 stage A): SP/FP and the words PUSH
+    // has written, anchored at SP instead of PC.
+    static Label stackTitle = Label("")
+    static Label stackPointer = Label("")
+    static Label stackDump = Label("")
+    static Label stackNote = Label("")
 
     // The educational layer (phase 7): plain-language explanation of the last
     // Step or Run, in the panel's own label.
@@ -109,6 +118,8 @@ void refresh() {
     Ui.regB.text = registers.get(1)
     Ui.regC.text = registers.get(2)
     Ui.regD.text = registers.get(3)
+    Ui.regX.text = registers.get(4)
+    Ui.regY.text = registers.get(5)
 
     // The memory dump, from the real memory, following PC.
     val base = labMemoryBase()
@@ -121,6 +132,17 @@ void refresh() {
     Ui.changes.text = joinLines(changeLines(previous, state, previousWindow, window,
         base, language))
     Ui.explanation.text = labExplanation()
+
+    // The stack: SP/FP plus the words PUSH has written, read straight from
+    // the real memory through SP.
+    Ui.stackPointer.text = stackPointerText(state)
+    val stackWindow = labStackWindow()
+    if (stackWindow.size == 0) {
+        Ui.stackDump.text = stackEmptyMessage(language)
+    } else {
+        Ui.stackDump.text = memoryHeader(labMemoryMode(), state.addressBits()) + "\n"
+            + joinLines(stackRows(stackWindow, state.sp(), labMemoryMode(), state.addressBits()))
+    }
 
     if (labDiagnostics().length > 0) {
         Ui.diagnostics.text = labDiagnostics()
@@ -158,7 +180,8 @@ void relabel() {
     Ui.memoryTitle.text = memoryTitle(language)
     Ui.changesTitle.text = changesTitle(language)
     Ui.viewTitle.text = viewTitle(language)
-    Ui.stackNote.text = stackNotImplementedNote(language)
+    Ui.stackTitle.text = stackTitle(language)
+    Ui.stackNote.text = stackPartialNote(language)
     Ui.explainTitle.text = explainTitle(language)
 }
 
@@ -298,9 +321,11 @@ main() {
     Ui.regB = Label("")
     Ui.regC = Label("")
     Ui.regD = Label("")
+    Ui.regX = Label("")
+    Ui.regY = Label("")
     var registersPanel = View(panel)
     registersPanel.bind(Column(listOf(Ui.registersTitle,
-        Ui.regA, Ui.regB, Ui.regC, Ui.regD)))
+        Ui.regA, Ui.regB, Ui.regC, Ui.regD, Ui.regX, Ui.regY)))
 
     Ui.flagsTitle = sectionTitle(Label(""))
     Ui.flags = Label("")
@@ -344,13 +369,21 @@ main() {
     Ui.memoryLegend.fontSize = 11
     Ui.memoryLegend.color = dimColor()
     Ui.memoryDump = Label("")
-    Ui.stackNote = Label("")
-    Ui.stackNote.fontSize = 11
-    Ui.stackNote.color = dimColor()
     var memoryPanel = View(panel)
     memoryPanel.bind(Column(listOf(
         Row(listOf(Ui.memoryTitle, Ui.viewTitle, Ui.memoryModes)),
-        Ui.memoryLegend, Ui.memoryDump, Ui.stackNote)))
+        Ui.memoryLegend, Ui.memoryDump)))
+
+    // --- debugger: the stack (Advanced Mode, phase 8 stage A) ---
+    Ui.stackTitle = sectionTitle(Label(""))
+    Ui.stackPointer = Label("")
+    Ui.stackPointer.color = dataColor()
+    Ui.stackDump = Label("")
+    Ui.stackNote = Label("")
+    Ui.stackNote.fontSize = 11
+    Ui.stackNote.color = dimColor()
+    var stackPanel = View(panel)
+    stackPanel.bind(Column(listOf(Ui.stackTitle, Ui.stackPointer, Ui.stackDump, Ui.stackNote)))
 
     // --- selector events ---
     Ui.machines.on("change", (e: Event) -> onMachineChange())
@@ -363,7 +396,7 @@ main() {
         Ui.sourceTitle, Ui.editor, controls, Ui.message, Hr(),
         Ui.machineSummary, Ui.status, Ui.current, Ui.sourceLine, Hr(),
         Row(listOf(registersPanel, flagsPanel)),
-        explainPanel, changesPanel, memoryPanel,
+        explainPanel, changesPanel, memoryPanel, stackPanel,
         outputPanel, diagnosticsPanel,
         Hr(), poweredBy))
     var shell = View(root)

@@ -229,12 +229,13 @@ test "D-1: an address operand resolves instead of returning nothing" {
 
 test "D-1: a reserved register name inside brackets is rejected cleanly" {
     // parseMemoryOperand had the same shape as the defect above, on a path no
-    // test reached: an advanced-mode register name between brackets.
-    val r = assembleSource("STORE [X], A\nHALT\n", pubvm8())
+    // test reached: an advanced-mode register name between brackets. X is a
+    // real register since phase 8 stage A, so this now exercises SP instead.
+    val r = assembleSource("STORE [SP], A\nHALT\n", pubvm8())
     assert(r.ok() == false)
     assert(r.diagnostics().get(0).code() == "ASM014")
-    assert(renderDiagnostic(r.diagnostics().get(0), "en").contains("'X' belongs to Advanced Mode"))
-    assert(assembleSource("LOAD A, [SP]\nHALT\n", pubvm8()).diagnostics().get(0).code() == "ASM014")
+    assert(renderDiagnostic(r.diagnostics().get(0), "en").contains("'SP' belongs to Advanced Mode"))
+    assert(assembleSource("LOAD A, [FP]\nHALT\n", pubvm8()).diagnostics().get(0).code() == "ASM014")
     // A name that is not reserved is still a data label.
     val labelled = assembleSource("LOAD A, [total]\nHALT\ntotal:\nHALT\n", pubvm8())
     assert(labelled.ok(), renderDiagnostics(labelled.diagnostics(), "en"))
@@ -257,7 +258,7 @@ test "D-2: a failing first instruction does not index an empty list" {
     assert(badCount.ok() == false)
     assert(badCount.diagnostics().get(0).code() == "ASM003")
 
-    val advanced = assembleSource("PUSH A\nHALT\n", pubvm8())
+    val advanced = assembleSource("CALL A\nHALT\n", pubvm8())
     assert(advanced.ok() == false)
     assert(advanced.diagnostics().get(0).code() == "ASM010")
 

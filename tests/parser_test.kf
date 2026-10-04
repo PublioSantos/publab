@@ -85,12 +85,19 @@ test "an unclosed bracket is reported" {
     assert(renderDiagnostic(r.diagnostics().get(0), "en").contains("expected ']'"))
 }
 
-test "advanced-mode registers are reserved, not treated as labels" {
-    val r = parseSource("LOAD X, 1")
+test "SP and FP are reserved, not treated as labels" {
+    val r = parseSource("LOAD SP, 1")
     assert(r.diagnostics().size == 1)
     assert(r.diagnostics().get(0).code() == "ASM014")
-    assert(renderDiagnostic(r.diagnostics().get(0), "en").contains("'X' belongs to Advanced Mode"))
+    assert(renderDiagnostic(r.diagnostics().get(0), "en").contains("'SP' belongs to Advanced Mode"))
     assert(renderDiagnostic(r.diagnostics().get(0), "pt").contains("pertence ao Advanced Mode"))
+}
+
+test "X and Y parse as ordinary registers, not labels" {
+    val r = parseSource("LOAD X, 1")
+    assert(r.diagnostics().size == 0, renderDiagnostics(r.diagnostics(), "en"))
+    assert(r.instructions().get(0).operands().get(0).kind() == "reg")
+    assert(r.instructions().get(0).operands().get(0).reg() == 4)
 }
 
 test "blank lines and comment-only lines produce nothing" {

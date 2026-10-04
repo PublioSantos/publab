@@ -105,6 +105,51 @@ List<String> memoryRows(List<Int> window, Int base, List<Int> previous, Int pc,
     return rows
 }
 
+// --- the stack (Advanced Mode, phase 8 stage A) -----------------------------
+//
+// SP is an address, not a word-sized register (Registers.kf), so it is never
+// part of registerRows/registerLines — it gets its own small view here, in
+// the same row/column shape as the memory dump, anchored at SP instead of PC.
+
+Int stackViewBytes() {
+    return memoryRowWidth() * 4
+}
+
+String stackEmptyMessage(String language) {
+    if (isPt(language)) { return "(pilha vazia)" }
+    return "(empty stack)"
+}
+
+// "SP 65528    FP 0" — plain numbers, like `cycles`: SP's initial value (one
+// past the top of memory) does not fit the address hex width, so hex display
+// would be misleading right where it matters most.
+String stackPointerText(MachineState state) {
+    return "SP " + state.sp() + "    FP " + state.fp()
+}
+
+// `window` holds the bytes from `base` (== SP) upward. The top-of-stack cell
+// — the word a POP would read right now — carries its own marker, the same
+// one-character-wide convention memoryRows uses for PC and "changed".
+List<String> stackRows(List<Int> window, Int base, String mode, Int addressBits) {
+    var rows: List<String> = listOf()
+    var offset = 0
+    while (offset < window.size) {
+        var line = toHex((base + offset) as Long, addressBytes(addressBits) * 2) + "   "
+        var column = 0
+        while (column < memoryRowWidth()) {
+            val index = offset + column
+            if (index < window.size) {
+                val marker = if (index == 0) "^" else " "
+                line = line + marker + cellText(window.get(index), mode)
+            }
+            column = column + 1
+        }
+        rows.add(line)
+        offset = offset + memoryRowWidth()
+    }
+    return rows
+}
+
 // --- what the last instruction changed (sections 16 and 48) -----------------
 
 String beforeWord(String language) {

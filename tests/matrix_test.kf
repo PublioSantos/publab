@@ -359,7 +359,8 @@ test "the snapshot reports the right machine on every variant" {
         assert(state.machineName() == config.name())
         assert(state.wordSize() == config.wordSize())
         assert(state.addressBits() == 16)
-        assert(state.registerNames().size == 4 && state.registers().size == 4)
+        assert(state.registerNames().size == 6 && state.registers().size == 6,
+            "A, B, C, D, X, Y — Advanced Mode's X and Y are real registers since phase 8 stage A")
         assert(statusName(state.status()) == "HALTED")
         assert(state.currentInstruction() == "HALT")
         assert(state.cycles() == 20)

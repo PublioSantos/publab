@@ -53,14 +53,20 @@ para que a checagem da palavra seja a dona de todo erro realista.
 
 | operando | significado |
 |---|---|
-| `A` `B` `C` `D` | um registrador |
+| `A` `B` `C` `D` `X` `Y` | um registrador |
 | `250` | um valor imediato |
 | `[0x80]` | o endereço de memória 0x80 |
 | `[total]` | o endereço de memória do label `total` |
 | `loop` | um label, como destino de salto |
 
-Os nomes `X`, `Y`, `SP` e `FP` são **reservados** para o Advanced Mode
-(fase 8), em qualquer caixa, e nunca são lidos como nome de label.
+`X` e `Y` são registradores comuns (Advanced Mode, fase 8 etapa A) — eles
+analisam e codificam exatamente como `A`-`D`, em qualquer lugar onde um
+operando de registrador é aceito.
+
+Os nomes `SP` e `FP` continuam **reservados**, em qualquer caixa, e nunca são
+lidos como nome de label: são endereços que as instruções de pilha gerenciam
+(ver "Pilha" em [pubvm.pt_BR.md](pubvm.pt_BR.md)), nunca um registrador geral
+de operando.
 
 ## Instruções — Basic Mode
 
@@ -76,10 +82,16 @@ Os nomes `X`, `Y`, `SP` e `FP` são **reservados** para o Advanced Mode
 
 Quais flags cada instrução altera está em [pubvm.pt_BR.md](pubvm.pt_BR.md).
 
-O Advanced Mode (`PUSH`, `POP`, `CALL`, `RET`, `SHL`, `SHR`, `ROL`, `ROR`,
-`JN`, `JO`, `JNZ`, `JNC`, `ENTER`, `LEAVE`) **não está implementado**. O
-assembler reconhece esses mnemônicos e os rejeita com `ASM010`, dizendo que
-pertencem ao Advanced Mode — não com "instrução desconhecida".
+## Instruções — Advanced Mode
+
+| instrução | formas | situação |
+|---|---|---|
+| `PUSH` `POP` | `op r` | implementado (etapa A) |
+| `CALL` `RET` `SHL` `SHR` `ROL` `ROR` `JN` `JO` `JNZ` `JNC` `ENTER` `LEAVE` | — | **não implementado** |
+
+O assembler reconhece os mnemônicos ainda não implementados e os rejeita com
+`ASM010`, dizendo que pertencem ao Advanced Mode — não com "instrução
+desconhecida".
 
 Note que o conjunto do Basic Mode **não tem `JNZ`**, então um laço de contagem
 decrescente testa zero e sai, depois volta com um salto incondicional — veja

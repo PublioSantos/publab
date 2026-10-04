@@ -173,6 +173,25 @@ List<Int> labMemoryWindow() {
     return labMemoryWindowAt(labMemoryBase())
 }
 
+// --- the stack (Advanced Mode, phase 8 stage A) -----------------------------
+
+// The bytes from SP upward, for the stack view — the real memory, through SP,
+// never a separate structure the engine could drift from.
+List<Int> labStackWindow() {
+    var window: List<Int> = listOf()
+    val sp = Lab.machine.sp
+    val top = Lab.config.memorySize()
+    var offset = 0
+    while (offset < stackViewBytes()) {
+        val address = sp + offset
+        if (address < top) {
+            window.add(Lab.machine.memory.readByte(address))
+        }
+        offset = offset + 1
+    }
+    return window
+}
+
 // Only comparable when it came from the same window: otherwise the dump would
 // mark cells as changed by comparing two different regions of memory.
 List<Int> labPreviousMemoryWindow() {

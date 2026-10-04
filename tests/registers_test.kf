@@ -11,10 +11,21 @@ test "basic mode has A B C D" {
     assert(lookupRegister("Z").found == false)
 }
 
-test "advanced registers are named but not implemented" {
-    assert(isAdvancedRegisterName("X"))
+test "X and Y are real general registers (Advanced Mode, phase 8 stage A)" {
+    assert(generalRegisterCount() == 6)
+    assert(registerName(4) == "X")
+    assert(registerName(5) == "Y")
+    assert(lookupRegister("x").found, "register names are case-insensitive")
+    assert(lookupRegister("X").id == 4)
+    assert(lookupRegister("Y").id == 5)
+}
+
+test "SP and FP are named but reserved — they are addresses, not registers" {
     assert(isAdvancedRegisterName("SP"))
-    assert(lookupRegister("X").found == false, "X is not reachable in basic mode")
+    assert(isAdvancedRegisterName("FP"))
+    assert(isAdvancedRegisterName("X") == false, "X is a real register now")
+    assert(lookupRegister("SP").found == false, "SP is never a general operand")
+    assert(lookupRegister("FP").found == false, "FP is never a general operand")
 }
 
 test "a register write respects the word size" {

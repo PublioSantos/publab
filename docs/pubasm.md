@@ -53,14 +53,19 @@ that the word check owns every realistic mistake.
 
 | operand | meaning |
 |---|---|
-| `A` `B` `C` `D` | a register |
+| `A` `B` `C` `D` `X` `Y` | a register |
 | `250` | an immediate value |
 | `[0x80]` | the memory address 0x80 |
 | `[total]` | the memory address of the label `total` |
 | `loop` | a label, as a jump target |
 
-The names `X`, `Y`, `SP` and `FP` are **reserved** for Advanced Mode
-(phase 8), in any letter case, and are never read as label names.
+`X` and `Y` are ordinary registers (Advanced Mode, phase 8 stage A) — they
+parse and encode exactly like `A`-`D`, anywhere a register operand is
+accepted.
+
+The names `SP` and `FP` are still **reserved**, in any letter case, and are
+never read as label names: they are addresses the stack instructions manage
+(see "Stack" in [pubvm.md](pubvm.md)), never a general operand register.
 
 ## Instructions — Basic Mode
 
@@ -76,10 +81,16 @@ The names `X`, `Y`, `SP` and `FP` are **reserved** for Advanced Mode
 
 Which flags each instruction touches is in [pubvm.md](pubvm.md).
 
-Advanced Mode (`PUSH`, `POP`, `CALL`, `RET`, `SHL`, `SHR`, `ROL`, `ROR`, `JN`,
-`JO`, `JNZ`, `JNC`, `ENTER`, `LEAVE`) is **not implemented**. The assembler
-recognises those mnemonics and rejects them with `ASM010`, saying they belong
-to Advanced Mode — not with "unknown instruction".
+## Instructions — Advanced Mode
+
+| instruction | forms | status |
+|---|---|---|
+| `PUSH` `POP` | `op r` | implemented (stage A) |
+| `CALL` `RET` `SHL` `SHR` `ROL` `ROR` `JN` `JO` `JNZ` `JNC` `ENTER` `LEAVE` | — | **not implemented** |
+
+The assembler recognises the not-yet-implemented mnemonics and rejects them
+with `ASM010`, saying they belong to Advanced Mode — not with
+"unknown instruction".
 
 Note that the Basic Mode set has **no `JNZ`**, so a countdown loop tests for
 zero and jumps out, then jumps back unconditionally — see

@@ -4,9 +4,17 @@ package publab.machine
 // PC is not here — it is an address, held by the machine itself, and does not
 // follow the word size.
 //
-// X, Y, SP and FP belong to Advanced Mode (phase 8). They are NOT implemented;
-// they are named here only so the assembler can reject them with an honest
-// diagnostic instead of "unknown register".
+// X and Y (Advanced Mode, phase 8, stage A) are general registers too: they
+// follow the word size exactly like A-D and live in the same RegisterFile.
+//
+// SP and FP are NOT here, even though Advanced Mode implements them: they are
+// addresses into the 16-bit memory space, not word-sized values — on
+// PubVM-8 a word-wrapped register could never hold the initial SP (65536),
+// one past the top of a 64 KB memory. They are their own fields on `Machine`,
+// the same way PC is, and are read and written only by the stack
+// instructions, never through LOAD/STORE/ADD and never as a general operand.
+// Their names are reserved here only so the assembler can reject an attempt
+// to use them as one with an honest diagnostic.
 
 record RegisterLookup(Bool found, Int id)
 
@@ -14,11 +22,18 @@ Int basicRegisterCount() {
     return 4
 }
 
+// A, B, C, D, X, Y — every register the RegisterFile actually stores.
+Int generalRegisterCount() {
+    return 6
+}
+
 String registerName(Int id) {
     if (id == 0) { return "A" }
     if (id == 1) { return "B" }
     if (id == 2) { return "C" }
     if (id == 3) { return "D" }
+    if (id == 4) { return "X" }
+    if (id == 5) { return "Y" }
     return "?"
 }
 
@@ -28,12 +43,17 @@ RegisterLookup lookupRegister(String name) {
     if (upper == "B") { return RegisterLookup(true, 1) }
     if (upper == "C") { return RegisterLookup(true, 2) }
     if (upper == "D") { return RegisterLookup(true, 3) }
+    if (upper == "X") { return RegisterLookup(true, 4) }
+    if (upper == "Y") { return RegisterLookup(true, 5) }
     return RegisterLookup(false, 0)
 }
 
+// SP and FP only: the one remaining reserved name once X and Y became real
+// general registers. Still used by the assembler to reject them as a general
+// operand with an honest diagnostic instead of "unknown register".
 Bool isAdvancedRegisterName(String name) {
     val upper = name.toUpperCase()
-    return upper == "X" || upper == "Y" || upper == "SP" || upper == "FP"
+    return upper == "SP" || upper == "FP"
 }
 
 void registerFault(Int id) {

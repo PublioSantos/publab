@@ -68,9 +68,57 @@ O `PC` é mantido pela própria máquina, não pelo register file: ele é um
 **endereço**, então segue o tamanho de endereço (16 bits) e não o tamanho da
 palavra.
 
-`X`, `Y`, `SP` e `FP` pertencem ao Advanced Mode (fase 8) e **não estão
-implementados**. Os nomes são reservados para que o assembler possa dizer
-isso.
+`X` e `Y` pertencem ao Advanced Mode (fase 8, etapa A) e **estão
+implementados**: mais dois registradores gerais do tamanho da palavra, ids 4
+e 5, usáveis em qualquer lugar onde A-D também são.
+
+`SP` e `FP` também pertencem ao Advanced Mode. O `SP` **está implementado**,
+mas como um endereço ao lado do `PC`, não como registrador do tamanho da
+palavra (seção "Pilha" abaixo) — ele precisa guardar `memorySize`, um
+endereço além do topo da memória, o que não cabe numa palavra de 8 ou 16
+bits. O `FP` existe como o mesmo tipo de campo de endereço, inicializado em
+0, mas nada ainda o lê ou escreve: está reservado para
+`CALL`/`RET`/`ENTER`/`LEAVE`, uma etapa posterior. Nenhum dos dois é
+alcançável como registrador geral de operando — o assembler rejeita
+`SP`/`FP` do mesmo jeito que sempre rejeitou qualquer nome do Advanced Mode,
+com `ASM014`.
+
+## Pilha
+
+Advanced Mode, etapa A: `PUSH` e `POP`.
+
+```
+SP inicial = memorySize   (um endereço além do topo da memória — não é um endereço válido)
+wordBytes  = wordSize / 8
+```
+
+A pilha cresce em direção aos endereços **menores**, a partir do topo da
+memória. Um núcleo, uma regra, para os três tamanhos de palavra — não há
+lógica de pilha por variante.
+
+`PUSH reg`:
+```
+SP = SP - wordBytes
+MEM[SP] = reg
+```
+verificado primeiro: se `SP - wordBytes < 0`, o push não tem espaço e a
+máquina falha com `ERROR` ("stack overflow"), do mesmo jeito que um opcode
+desconhecido ou um acesso de memória fora da faixa — nunca um wrap silencioso.
+
+`POP reg`:
+```
+reg = MEM[SP]
+SP = SP + wordBytes
+```
+verificado primeiro: se `SP >= memorySize`, nada foi empilhado e a máquina
+falha com `ERROR` ("stack underflow").
+
+`PUSH` e `POP` não tocam em nenhuma flag nem em nenhum registrador além do
+próprio operando. O `reset()` devolve o `SP` para `memorySize` e o `FP` para
+0, como qualquer outro pedaço de estado.
+
+`CALL`, `RET`, `ENTER` e `LEAVE` usarão essa mesma pilha; são uma etapa
+posterior do Advanced Mode, ainda não implementada.
 
 ## Flags
 
@@ -155,8 +203,9 @@ LOAD  STORE  ADD  SUB  AND  OR  XOR  NOT  JMP  JZ  JC  PRINT  HALT
 CPU (seção 13 da especificação). Ela acrescenta o valor guardado no
 registrador, em decimal sem sinal, à saída da máquina.
 
-O Advanced Mode (`PUSH`, `POP`, `CALL`, `RET`, shifts, rotates, `JN`, `JO`,
-`JNZ`, `JNC`, `ENTER`, `LEAVE`) **não está implementado**.
+Advanced Mode, etapa A: `PUSH` e `POP` (ver "Pilha" acima). `CALL`, `RET`,
+shifts, rotates, `JN`, `JO`, `JNZ`, `JNC`, `ENTER` e `LEAVE` **ainda não estão
+implementados**.
 
 ## Encoding
 
@@ -190,6 +239,8 @@ memória legível. `W` = `wordSize / 8`, `A` = `addressBits / 8` (2).
 | `0x51` | `JZ addr` | `op addr:A` | 1+A |
 | `0x52` | `JC addr` | `op addr:A` | 1+A |
 | `0x60` | `PRINT reg` | `op reg` | 2 |
+| `0x70` | `PUSH reg` | `op reg` | 2 |
+| `0x71` | `POP reg` | `op reg` | 2 |
 
 Imediatos e endereços são little-endian. A largura do imediato segue o tamanho
 da palavra, então **a mesma fonte produz uma imagem diferente em cada

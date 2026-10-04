@@ -29,13 +29,15 @@ test "padding helpers" {
 test "a register is shown in decimal, hexadecimal and binary" {
     val state = ranState(goldenSource(), pubvm8())
     val rows = registerRows(state)
-    assert(rows.size == 4)
+    assert(rows.size == 6, "A, B, C, D, X, Y")
     assert(rows.get(0).name() == "A")
     assert(rows.get(0).dec() == "14")
     assert(rows.get(0).hex() == "0E")
     assert(rows.get(0).bin() == "00001110")
     assert(rows.get(1).dec() == "20")
     assert(rows.get(3).dec() == "0", "D was never written")
+    assert(rows.get(4).name() == "X" && rows.get(5).name() == "Y")
+    assert(rows.get(4).dec() == "0", "X was never written")
 }
 
 test "the register line is aligned to the machine's widest value" {
@@ -50,7 +52,7 @@ test "the register line is aligned to the machine's widest value" {
 test "every variant produces one line per register" {
     for (var config in allMachines()) {
         val lines = registerLines(ranState(goldenSource(), config))
-        assert(lines.size == 4, config.name())
+        assert(lines.size == 6, config.name())
         assert(lines.get(0).startsWith("A   DEC"), config.name())
     }
     // The 32-bit line carries 32 binary digits.

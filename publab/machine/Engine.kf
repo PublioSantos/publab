@@ -14,11 +14,14 @@ String statusName(MachineStatus status) {
 }
 
 // A complete, immutable reading of the machine at one instant.
+//
+// `sp` and `fp` are addresses (section 8's reasoning in Registers.kf), so
+// they travel next to `pc`, never inside the word-sized `registers` list.
 record MachineState(String machineName, Int wordSize, Int addressBits,
                     List<String> registerNames, List<Long> registers,
                     Bool carry, Bool zero, Bool negative, Bool overflow,
-                    Int pc, Int cycles, MachineStatus status, String errorMessage,
-                    List<String> output, String currentInstruction)
+                    Int pc, Int sp, Int fp, Int cycles, MachineStatus status,
+                    String errorMessage, List<String> output, String currentInstruction)
 
 List<String> emptyStringList() {
     var l: List<String> = listOf()
@@ -36,12 +39,28 @@ List<String> copyStringList(List<String> source) {
     return out
 }
 
+// Free functions, not methods: a throw nested inside an if/else chain is
+// mishandled by the Kof JS backend (see Memory.kf's memoryFault and
+// notes/kof-compiler-findings.md), and the engine's execute() is exactly
+// such a chain.
+void stackOverflowFault() {
+    throw "stack overflow: the stack has no room left below address 0"
+}
+
+void stackUnderflowFault() {
+    throw "stack underflow: nothing has been pushed"
+}
+
 class Machine {
     MachineConfig config
     RegisterFile registers
     Memory memory
     FlagSet flags
     Int pc
+    // The stack pointer and frame pointer (Advanced Mode, phase 8 stage A).
+    // Addresses, not word-sized values — see the note in Registers.kf.
+    Int sp
+    Int fp
     Int cycles
     MachineStatus status
     String errorMessage
@@ -51,10 +70,14 @@ class Machine {
 
     constructor(MachineConfig config) {
         this.config = config
-        this.registers = RegisterFile(config.wordSize(), basicRegisterCount())
+        this.registers = RegisterFile(config.wordSize(), generalRegisterCount())
         this.memory = Memory(config.memorySize())
         this.flags = FlagSet()
         this.pc = config.entryPoint()
+        // One past the top of memory: nothing is on the stack yet, and the
+        // first PUSH decrements before writing (the user's own convention).
+        this.sp = config.memorySize()
+        this.fp = 0
         this.cycles = 0
         this.status = MachineStatus.Ready
         this.errorMessage = ""
@@ -77,6 +100,8 @@ class Machine {
         this.registers.clear()
         this.flags.clear()
         this.pc = this.config.entryPoint()
+        this.sp = this.config.memorySize()
+        this.fp = 0
         this.cycles = 0
         this.output = emptyStringList()
         this.errorMessage = ""
@@ -237,6 +262,28 @@ class Machine {
             if (this.flags.carry) { this.pc = d.address() } else { this.pc = next }
             return
         }
+        if (mnemonic == "PUSH") {
+            // Decrement first, then write — SP always points AT the top word
+            // once something is on the stack (the user's own convention).
+            val value = this.registers.read(d.reg1())
+            val newSp = this.sp - w
+            if (newSp < 0) { stackOverflowFault() }
+            this.sp = newSp
+            this.memory.writeWord(this.sp, w, value)
+            this.pc = next
+            return
+        }
+        if (mnemonic == "POP") {
+            // SP == memorySize means nothing has been pushed: every PUSH and
+            // POP move SP by exactly `w`, so SP < memorySize is always one
+            // full word of real data, never a partial one.
+            if (this.sp >= this.config.memorySize()) { stackUnderflowFault() }
+            val value = this.memory.readWord(this.sp, w)
+            this.registers.write(d.reg1(), value)
+            this.sp = this.sp + w
+            this.pc = next
+            return
+        }
         if (mnemonic == "PRINT") {
             // PRINT is an educational instruction of the PubVM, not a physical
             // CPU instruction (section 13 of the specification).
@@ -265,7 +312,7 @@ class Machine {
         var names: List<String> = listOf()
         var values: List<Long> = listOf()
         var i = 0
-        while (i < basicRegisterCount()) {
+        while (i < generalRegisterCount()) {
             names.add(registerName(i))
             values.add(this.registers.read(i))
             i++
@@ -273,7 +320,7 @@ class Machine {
         return MachineState(this.config.name(), this.config.wordSize(), this.config.addressBits(),
             names, values,
             this.flags.carry, this.flags.zero, this.flags.negative, this.flags.overflow,
-            this.pc, this.cycles, this.status, this.errorMessage,
+            this.pc, this.sp, this.fp, this.cycles, this.status, this.errorMessage,
             copyStringList(this.output), this.currentInstructionText())
     }
 }

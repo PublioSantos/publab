@@ -194,11 +194,18 @@ String noExplainYet(String language) {
     return "Assemble a program and press Step to see the instruction explained."
 }
 
-String stackNotImplementedNote(String language) {
+// Phase 8 stage A implemented SP, FP, PUSH and POP; CALL, RET, ENTER and
+// LEAVE — which would also use this same stack — are still later stages.
+String stackPartialNote(String language) {
     if (isPt(language)) {
-        return "A stack aparece com o Advanced Mode (fase 8): SP, PUSH, POP, CALL e RET"
-            + " ainda não existem, então não há pilha para mostrar."
+        return "CALL, RET, ENTER e LEAVE ainda não existem; por ora só PUSH e POP movem"
+            + " a pilha."
     }
-    return "The stack view arrives with Advanced Mode (phase 8): SP, PUSH, POP, CALL"
-        + " and RET do not exist yet, so there is no stack to show."
+    return "CALL, RET, ENTER and LEAVE do not exist yet; for now only PUSH and POP"
+        + " move the stack."
+}
+
+String stackTitle(String language) {
+    if (isPt(language)) { return "PILHA" }
+    return "STACK"
 }

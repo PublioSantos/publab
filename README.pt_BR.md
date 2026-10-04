@@ -74,8 +74,8 @@ estar coberto pela suíte de testes.
 | 5A | Paridade do núcleo no target JS | **concluída** |
 | 5B | UI mínima | **concluída** |
 | 6 | Debugger | **concluída** |
-| 7 | Camada educacional | não iniciada |
-| 8 | Advanced Mode — X, Y, SP, FP, stack, shifts, saltos extras | não iniciada |
+| 7 | Camada educacional | **concluída** |
+| 8 | Advanced Mode — X, Y, SP, FP, stack, shifts, saltos extras | em andamento (etapa A: X, Y, SP, FP, PUSH, POP) |
 | 9 | Modelo educacional do 8051 | não iniciada |
 | 10 | Modelo educacional do Cortex-M3 | não iniciada |
 | 11 | Comparação entre arquiteturas | não iniciada |
@@ -105,23 +105,31 @@ lista antes/depois de tudo o que aquela instrução mudou, um marcador de uma
 coluna nos registradores e nas flags, e a linha da fonte em que o PC está,
 pelo source map do assembler.
 
-O que ela ainda **não** tem: as explicações educacionais (fase 7) e o
-Advanced Mode (fase 8). Duas ausências são deliberadas, não pendências:
+A camada educacional (fase 7) acrescenta um painel EXPLANATION em linguagem
+natural: o que o último Step ou Run realmente fez, construído a partir dos
+mesmos snapshots antes/depois que a lista de mudanças do debugger já lê —
+nunca uma segunda interpretação do programa.
 
-- **Sem visão de stack.** `SP`, `PUSH`, `POP`, `CALL` e `RET` ainda não
-  existem, então não há pilha para mostrar. O painel de memória diz isso em
-  vez de desenhar uma caixa vazia.
+O Advanced Mode (fase 8) está sendo implementado em etapas. A etapa A está
+concluída: `X` e `Y` são registradores gerais comuns; `SP` e `FP` estão
+implementados como endereços ao lado do `PC` (não como registradores do
+tamanho da palavra — o valor inicial do `SP`, um endereço além do topo da
+memória, não cabe numa palavra de 8 ou 16 bits); `PUSH` e `POP` movem a
+pilha, com falhas explícitas de overflow/underflow, nunca um wrap silencioso.
+O painel STACK do debugger mostra SP/FP e as palavras que o PUSH escreveu,
+lidas da memória real através do SP. `CALL`, `RET`, `ENTER`, `LEAVE`, os
+shifts, rotates e os saltos condicionais restantes (`JN`, `JO`, `JNZ`,
+`JNC`) são etapas posteriores — o assembler reconhece esses mnemônicos e diz
+que pertencem ao Advanced Mode, em vez de reportá-los como desconhecidos.
+
+Uma ausência é deliberada, não pendência:
+
 - **Sem botão Pause.** O runtime de UI JS do Kof não tem timer, então uma
   execução não pode ser interrompida por um botão — o clique não chegaria
   enquanto o run executa. O que existe no lugar é real: o `Run` é limitado
   por um orçamento de ciclos, informa que não terminou e continua de onde
   parou. O engine mantém o `requestPause()` para um chamador capaz de
   acionar a máquina em fatias.
-
-As instruções do Advanced Mode (`PUSH`, `POP`, `CALL`, `RET`, `SHL`, `SHR`,
-`ROL`, `ROR`, `JN`, `JO`, `JNZ`, `JNC`, `ENTER`, `LEAVE`) e os registradores
-`X`, `Y`, `SP`, `FP` **não estão implementados**. O assembler os reconhece e
-diz isso, em vez de reportá-los como desconhecidos.
 
 ## Atribuição na tela
 

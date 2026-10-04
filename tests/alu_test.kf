@@ -99,8 +99,12 @@ test "instruction table is the single source of truth" {
     assert(lookupOpcode(0x21).form() == formRegReg())
     assert(lookupOpcode(0xEE).found == false)
     assert(mnemonicExists("PRINT"))
-    assert(mnemonicExists("PUSH") == false, "PUSH is advanced mode, not implemented")
-    assert(isAdvancedMnemonic("PUSH"))
+    assert(mnemonicExists("PUSH"), "PUSH is Advanced Mode, implemented since phase 8 stage A")
+    assert(isAdvancedMnemonic("PUSH") == false)
+    assert(lookupInstruction("PUSH", formReg()).opcode() == 0x70)
+    assert(lookupInstruction("POP", formReg()).opcode() == 0x71)
+    assert(mnemonicExists("CALL") == false, "CALL is advanced mode, not implemented yet")
+    assert(isAdvancedMnemonic("CALL"))
 }
 
 test "encoded instruction length follows the machine" {

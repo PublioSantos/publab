@@ -1,0 +1,232 @@
+package tests
+
+import publab.machine
+import publab.assembler
+import publab.ui
+
+// Phase 8, stage A — the stack: SP, FP, PUSH, POP. The user's own
+// convention (confirmed before implementing): the stack grows toward lower
+// addresses, SP starts at memorySize (one past the top of memory), PUSH
+// decrements SP by wordBytes before writing, POP reads then increments SP
+// by wordBytes. One core, three word sizes — no per-variant implementation.
+
+Machine loaded(String source, MachineConfig config) {
+    val assembled = assembleSource(source, config)
+    assert(assembled.ok(), renderDiagnostics(assembled.diagnostics(), "en"))
+    var m = Machine(config)
+    m.load(assembled.image())
+    return m
+}
+
+// --- PUSH --------------------------------------------------------------
+
+test "PUSH decrements SP by wordBytes and writes the value at the new SP" {
+    var m = loaded("LOAD A, 42\nPUSH A\nHALT\n", pubvm8())
+    assert(m.sp == pubvm8().memorySize(), "SP starts one past the top of memory")
+    m.step()
+    m.step()
+    assert(m.sp == pubvm8().memorySize() - 1, "PubVM-8 moves the stack by 1 byte")
+    assert(m.memory.readByte(m.sp) == 42, "the value really is in memory, at SP")
+}
+
+test "PUSH disassembles and decodes like any other register-form instruction" {
+    var m = loaded("LOAD X, 1\nPUSH X\nHALT\n", pubvm8())
+    m.step()
+    assert(m.currentInstructionText() == "PUSH X")
+}
+
+// --- POP -----------------------------------------------------------------
+
+test "POP reads the value at SP, then increments SP by wordBytes" {
+    var m = loaded("LOAD A, 42\nPUSH A\nLOAD A, 0\nPOP B\nHALT\n", pubvm8())
+    m.step()
+    m.step()
+    assert(m.sp == pubvm8().memorySize() - 1)
+    m.step()
+    m.step()
+    assert(m.registers.read(1) == 42 as Long, "B received what A pushed")
+    assert(m.sp == pubvm8().memorySize(), "SP is back to empty")
+}
+
+// --- multiple PUSH / multiple POP, LIFO order -----------------------------
+
+test "multiple PUSH, multiple POP: last in, first out" {
+    var m = loaded(
+        "LOAD A, 1\nLOAD B, 2\nLOAD C, 3\n"
+        + "PUSH A\nPUSH B\nPUSH C\n"
+        + "POP X\nPOP Y\nPOP A\nHALT\n", pubvm8())
+    val top = pubvm8().memorySize()
+    m.run(1000)
+    assert(statusName(m.status) == "HALTED")
+    assert(m.sp == top, "every PUSH was matched by a POP")
+    assert(m.registers.read(4) == 3 as Long, "X got the last value pushed (C)")
+    assert(m.registers.read(5) == 2 as Long, "Y got the next one (B)")
+    assert(m.registers.read(0) == 1 as Long, "A got the first one pushed (A's own old value)")
+}
+
+test "pushing N words and popping N words always returns SP to where it started" {
+    for (var config in allMachines()) {
+        var m = loaded(
+            "LOAD A, 1\nLOAD B, 2\nLOAD C, 3\nLOAD D, 4\n"
+            + "PUSH A\nPUSH B\nPUSH C\nPUSH D\n"
+            + "POP A\nPOP B\nPOP C\nPOP D\nHALT\n", config)
+        val top = config.memorySize()
+        m.run(1000)
+        assert(statusName(m.status) == "HALTED", config.name())
+        assert(m.sp == top, config.name() + ": balanced PUSH/POP returns SP home")
+        // LIFO: D was pushed last, popped first, so it round-trips to A; the
+        // chain below unwinds D->A, C->B, B->C, A->D.
+        assert(m.registers.read(0) == 4 as Long, config.name())
+        assert(m.registers.read(1) == 3 as Long, config.name())
+        assert(m.registers.read(2) == 2 as Long, config.name())
+        assert(m.registers.read(3) == 1 as Long, config.name())
+    }
+}
+
+// --- PUSH/POP across the three word sizes ---------------------------------
+
+test "PUSH/POP move exactly wordBytes, on every variant" {
+    for (var config in allMachines()) {
+        // The machine's own maximum, so the immediate always fits the word —
+        // 65535 would be rejected by the assembler on PubVM-8 (ASM005).
+        val maxValue = wordMaxUnsigned(config.wordSize())
+        var m = loaded("LOAD A, " + maxValue + "\nPUSH A\nHALT\n", config)
+        val top = config.memorySize()
+        m.step()
+        m.step()
+        assert(m.sp == top - wordBytes(config.wordSize()), config.name())
+        assert(m.memory.readWord(m.sp, wordBytes(config.wordSize())) == maxValue, config.name())
+    }
+}
+
+// --- the stack at the top edge of memory ----------------------------------
+
+test "the first PUSH lands at the very top of memory, one word in" {
+    for (var config in allMachines()) {
+        val maxValue = wordMaxUnsigned(config.wordSize())
+        var m = loaded("LOAD A, " + maxValue + "\nPUSH A\nHALT\n", config)
+        val w = wordBytes(config.wordSize())
+        assert(m.sp == config.memorySize(), "SP's starting value is one past the top")
+        m.step()
+        m.step()
+        // The slot the first PUSH used is the last valid address: no gap, no
+        // off-by-one, right up against the end of memory.
+        assert(m.sp == config.memorySize() - w, config.name())
+        assert(m.memory.readByte(config.memorySize() - w) >= 0, "a readable address")
+    }
+}
+
+// --- overflow and underflow, detected explicitly --------------------------
+
+test "stack overflow is a real fault, not a silent wrap" {
+    var m = loaded("PUSH A\nHALT\n", pubvm8())
+    // Place SP where the stack has no room left, instead of running 65536
+    // real PUSHes just to reach the same boundary.
+    m.sp = 0
+    m.step()
+    assert(statusName(m.status) == "ERROR")
+    assert(m.errorMessage.contains("overflow"), m.errorMessage)
+}
+
+test "stack overflow is detected on every word size, right at the boundary" {
+    for (var config in allMachines()) {
+        var m = loaded("PUSH A\nHALT\n", config)
+        val w = wordBytes(config.wordSize())
+        // One byte short of a full word of room: the next PUSH cannot fit.
+        m.sp = w - 1
+        m.step()
+        assert(statusName(m.status) == "ERROR", config.name())
+        assert(m.errorMessage.contains("overflow"), config.name() + ": " + m.errorMessage)
+    }
+}
+
+test "stack underflow is a real fault, not a silent read of garbage" {
+    var m = loaded("POP A\nHALT\n", pubvm8())
+    assert(m.sp == pubvm8().memorySize(), "nothing has been pushed")
+    m.step()
+    assert(statusName(m.status) == "ERROR")
+    assert(m.errorMessage.contains("underflow"), m.errorMessage)
+}
+
+test "stack underflow is detected on every word size" {
+    for (var config in allMachines()) {
+        var m = loaded("POP A\nHALT\n", config)
+        m.step()
+        assert(statusName(m.status) == "ERROR", config.name())
+        assert(m.errorMessage.contains("underflow"), config.name() + ": " + m.errorMessage)
+    }
+}
+
+test "a faulted machine does not keep executing" {
+    var m = loaded("POP A\nPUSH A\nHALT\n", pubvm8())
+    assert(m.step() == false, "the underflow fault stops execution")
+    assert(m.step() == false, "a faulted machine never steps again")
+    assert(statusName(m.status) == "ERROR")
+}
+
+// --- PUSH/POP preserve everything they do not touch ------------------------
+
+test "PUSH does not touch flags, other registers, or the pushed register itself" {
+    var m = loaded("LOAD A, 250\nLOAD B, 20\nADD A, B\nPUSH A\nHALT\n", pubvm8())
+    m.step()
+    m.step()
+    m.step()
+    val carryBefore = m.flags.carry
+    val zeroBefore = m.flags.zero
+    val negativeBefore = m.flags.negative
+    val overflowBefore = m.flags.overflow
+    val aBefore = m.registers.read(0)
+    val bBefore = m.registers.read(1)
+    val cyclesBefore = m.cycles
+    m.step()
+    assert(m.flags.carry == carryBefore && m.flags.zero == zeroBefore)
+    assert(m.flags.negative == negativeBefore && m.flags.overflow == overflowBefore)
+    assert(m.registers.read(0) == aBefore, "PUSH does not change the register it reads")
+    assert(m.registers.read(1) == bBefore)
+    assert(m.cycles == cyclesBefore + 1)
+}
+
+test "POP does not touch flags or any register other than its destination" {
+    var m = loaded("LOAD A, 250\nLOAD B, 20\nADD A, B\nPUSH A\nPOP C\nHALT\n", pubvm8())
+    m.step()
+    m.step()
+    m.step()
+    m.step()
+    val carryBefore = m.flags.carry
+    val zeroBefore = m.flags.zero
+    val aBefore = m.registers.read(0)
+    val bBefore = m.registers.read(1)
+    m.step()
+    assert(m.flags.carry == carryBefore && m.flags.zero == zeroBefore, "POP does not touch flags")
+    assert(m.registers.read(0) == aBefore && m.registers.read(1) == bBefore)
+    assert(m.registers.read(2) == 14 as Long, "C received the popped value (250 + 20, wrapped to 8 bits)")
+}
+
+test "reset clears the stack back to empty, like every other piece of state" {
+    var m = loaded("LOAD A, 1\nPUSH A\nHALT\n", pubvm8())
+    m.run(1000)
+    assert(m.sp == pubvm8().memorySize() - 1)
+    m.reset()
+    assert(m.sp == pubvm8().memorySize(), "reset puts SP back at the top")
+    assert(m.fp == 0)
+}
+
+// --- the controller and debugger views see the real stack -------------------
+
+test "the laboratory's stack window follows SP, from the real memory" {
+    labSelectMachine(0)
+    labAssemble("LOAD A, 99\nPUSH A\nHALT\n")
+    labStep()
+    labStep()
+    val window = labStackWindow()
+    assert(window.size > 0)
+    assert(window.get(0) == 99, "the top of the stack is the pushed value")
+    assert(stackPointerText(labState()).contains("" + (65536 - 1)))
+}
+
+test "the stack window reports empty before anything is pushed" {
+    labSelectMachine(0)
+    labAssemble("HALT\n")
+    val window = labStackWindow()
+    assert(window.size == 0, "SP is at the very top, so there is nothing to show")
+}

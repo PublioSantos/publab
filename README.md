@@ -71,8 +71,8 @@ unless it is covered by the test suite.
 | 5A | JS-target parity for the core | **done** |
 | 5B | Minimal UI | **done** |
 | 6 | Debugger | **done** |
-| 7 | Educational layer | not started |
-| 8 | Advanced Mode — X, Y, SP, FP, stack, shifts, extra jumps | not started |
+| 7 | Educational layer | **done** |
+| 8 | Advanced Mode — X, Y, SP, FP, stack, shifts, extra jumps | in progress (stage A: X, Y, SP, FP, PUSH, POP) |
 | 9 | 8051 educational model | not started |
 | 10 | Cortex-M3 educational model | not started |
 | 11 | Architecture comparison | not started |
@@ -100,23 +100,30 @@ before/after list of everything that instruction changed, a one-character
 change marker on the registers and flags, and the source line PC is on,
 through the assembler's source map.
 
-What it still does **not** have: the educational explanations (phase 7) and
-Advanced Mode (phase 8). Two absences are deliberate rather than pending:
+The educational layer (phase 7) adds a plain-language EXPLANATION panel: what
+the last Step or Run actually did, built from the same before/after snapshots
+the debugger's change list reads — never a second interpretation of the
+program.
 
-- **No stack view.** `SP`, `PUSH`, `POP`, `CALL` and `RET` do not exist yet,
-  so there is no stack to show. The memory panel says so instead of drawing
-  an empty box.
+Advanced Mode (phase 8) is under way in stages. Stage A is done: `X` and `Y`
+are ordinary general registers; `SP` and `FP` are implemented as addresses
+next to `PC` (not word-sized registers — `SP`'s initial value, one past the
+top of memory, does not fit an 8-bit or 16-bit word); `PUSH` and `POP` move
+the stack, with explicit overflow/underflow faults, never a silent wrap. The
+debugger's STACK panel shows SP/FP and the words PUSH has written, read from
+the real memory through SP. `CALL`, `RET`, `ENTER`, `LEAVE`, the shifts,
+rotates and remaining conditional jumps (`JN`, `JO`, `JNZ`, `JNC`) are later
+stages — the assembler recognises those mnemonics and says they belong to
+Advanced Mode, rather than reporting them as unknown.
+
+One absence is deliberate rather than pending:
+
 - **No Pause button.** Kof's JS UI runtime has no timer, so a run cannot be
   interrupted from a button — the click could not be delivered while the run
   is executing. What exists instead is real: `Run` is bounded by a cycle
   budget, reports that it did not finish, and continues where it left off.
   The engine keeps `requestPause()` for a caller that can drive the machine
   in slices.
-
-Advanced Mode instructions (`PUSH`, `POP`, `CALL`, `RET`, `SHL`, `SHR`, `ROL`,
-`ROR`, `JN`, `JO`, `JNZ`, `JNC`, `ENTER`, `LEAVE`) and the registers `X`, `Y`,
-`SP`, `FP` are **not implemented**. The assembler recognises them and says so,
-rather than reporting them as unknown.
 
 ## Attribution on screen
 
