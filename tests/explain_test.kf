@@ -26,7 +26,7 @@ test "LOAD is explained with the value it moved" {
 }
 
 test "ADD without overflow names the sum and where it landed" {
-    val assembled = assembleSource(explainProgram(), pubvm8())
+    val assembled = assembleSource("LOAD A, 5\nLOAD B, 20\nADD A, B\nHALT\n", pubvm8())
     var machine = Machine(pubvm8())
     machine.load(assembled.image())
     machine.step()
@@ -34,10 +34,12 @@ test "ADD without overflow names the sum and where it landed" {
     val before = machine.snapshot()
     machine.step()
     val after = machine.snapshot()
+    assert(after.carry() == false, "5 + 20 does not overflow an 8-bit word")
     val text = instructionExplanation(before, after, "en")
-    assert(text.contains("250"), text)
+    assert(text.contains("5"), text)
     assert(text.contains("20"), text)
-    assert(text.contains("270") == false, "8-bit ADD wraps, so 270 is never the stored value")
+    assert(text.contains("25"), text)
+    assert(text.contains("overflow") == false, "no overflow happened: " + text)
 }
 
 test "ADD overflow on PubVM-8 explains the wraparound and the carry flag" {
@@ -75,19 +77,41 @@ test "SUB that borrows explains the negative result" {
 }
 
 test "a conditional jump explains whether it was taken" {
+    // LOAD never touches the flags (section 18) — the zero flag has to come
+    // from an ALU instruction, not from loading zero into a register.
     val assembled = assembleSource(
-        "LOAD A, 0\nJZ taken\nHALT\ntaken:\nHALT\n", pubvm8())
+        "LOAD A, 0\nLOAD B, 0\nADD A, B\nJZ taken\nHALT\ntaken:\nHALT\n", pubvm8())
     assert(assembled.ok())
     var machine = Machine(pubvm8())
     machine.load(assembled.image())
     machine.step()
+    machine.step()
+    machine.step()
     val before = machine.snapshot()
-    assert(before.zero())
+    assert(before.zero(), "0 + 0 sets the zero flag")
     machine.step()
     val after = machine.snapshot()
     val text = instructionExplanation(before, after, "en")
     assert(text.contains("JZ"), text)
     assert(text.contains("taken"), text)
+}
+
+test "a conditional jump that is not taken says so, and where execution continues" {
+    val assembled = assembleSource(
+        "LOAD A, 1\nLOAD B, 0\nADD A, B\nJZ taken\nHALT\ntaken:\nHALT\n", pubvm8())
+    assert(assembled.ok())
+    var machine = Machine(pubvm8())
+    machine.load(assembled.image())
+    machine.step()
+    machine.step()
+    machine.step()
+    val before = machine.snapshot()
+    assert(before.zero() == false, "1 + 0 does not set the zero flag")
+    machine.step()
+    val after = machine.snapshot()
+    val text = instructionExplanation(before, after, "en")
+    assert(text.contains("JZ"), text)
+    assert(text.contains("NOT taken"), text)
 }
 
 test "HALT is explained with the final cycle count" {
