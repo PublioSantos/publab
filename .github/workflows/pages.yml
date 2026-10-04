@@ -1,0 +1,75 @@
+name: Deploy PubLab to GitHub Pages
+
+# Builds the laboratory for the browser from whatever is on `main` and
+# publishes it to GitHub Pages, so the page always shows the current
+# version. The Kof toolchain has no package-manager distribution, so this
+# builds it from source at a pinned commit — the same one validated by hand
+# (`VERSION` there is 0.5.0-beta, matching kof.toml).
+#
+# One-time setup this workflow cannot do for itself: in the repository's
+# Settings -> Pages, set "Source" to "GitHub Actions".
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout publab
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Build and install the Kof 0.5.0-beta toolchain
+        run: |
+          set -euo pipefail
+          git clone https://github.com/KofLang/kof4j /tmp/kof4j
+          cd /tmp/kof4j
+          git checkout 317d9f6b1c3e27032cc955a05f859f6c627d9338
+          mvn -B clean package -DskipTests
+          bash scripts/package.sh --skip-build
+          mkdir -p /tmp/kof-dist
+          tar xzf dist/kof-0.5.0-beta-linux-x86_64.tar.gz -C /tmp/kof-dist
+          /tmp/kof-dist/kof-0.5.0-beta-linux-x86_64/bin/kof install "$HOME/.kof"
+          echo "$HOME/.kof/bin" >> "$GITHUB_PATH"
+
+      - name: Run the test suite on both targets
+        # A build that does not pass its own tests never gets published.
+        run: |
+          kof test tests
+          kof test tests --target js
+
+      - name: Build the laboratory for the browser
+        run: kof build . --target js --output build/ui
+
+      - name: Upload the Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/ui
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

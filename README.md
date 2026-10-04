@@ -8,6 +8,14 @@
 
 **Powered by: [Kof](https://github.com/KofLang/Kof4j)**
 
+[![Deploy to GitHub Pages](https://github.com/PublioSantos/publab/actions/workflows/pages.yml/badge.svg)](https://github.com/PublioSantos/publab/actions/workflows/pages.yml)
+
+**Try it live:** <https://publiosantos.github.io/publab/> — rebuilt and
+redeployed automatically on every push to `main` (see
+[.github/workflows/pages.yml](.github/workflows/pages.yml)), so the page
+always runs the current version. A push is never published unless it first
+passes the full test suite on both targets.
+
 PubLab is a laboratory for learning how a computer works on the inside: you
 write a small program, execute it one instruction at a time and watch the
 registers, the flags, the memory and the program counter actually change.
