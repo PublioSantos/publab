@@ -187,6 +187,17 @@ String labSourceLine() {
     return sourceLineView(Lab.sourceMap, Lab.machine.pc, Lab.assembledSource, Lab.language)
 }
 
+// --- the educational layer (phase 7) ----------------------------------------
+//
+// What the last Step or Run did, in plain language, built from the reading
+// the controller kept from right before it acted. Reads the same `previous`
+// state the debugger's change list reads, so Step and the explanation always
+// describe the same instruction.
+String labExplanation() {
+    if (!Lab.assembled) { return noExplainYet(Lab.language) }
+    return instructionExplanation(Lab.previous, Lab.machine.snapshot(), Lab.language)
+}
+
 // Called before a control acts, so that afterwards the interface can show the
 // difference the instruction made.
 void labRemember() {

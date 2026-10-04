@@ -1,0 +1,171 @@
+package tests
+
+import publab.machine
+import publab.assembler
+import publab.ui
+
+// Phase 7 — the educational layer. Given the reading from before and after
+// one control action, the explanation is built from the real register and
+// flag values, not a canned sentence per mnemonic.
+
+String explainProgram() {
+    return "LOAD A, 250\nLOAD B, 20\nADD A, B\nPRINT A\nHALT\n"
+}
+
+test "LOAD is explained with the value it moved" {
+    val assembled = assembleSource(explainProgram(), pubvm8())
+    assert(assembled.ok())
+    var machine = Machine(pubvm8())
+    machine.load(assembled.image())
+    val before = machine.snapshot()
+    machine.step()
+    val after = machine.snapshot()
+    val text = instructionExplanation(before, after, "en")
+    assert(text.contains("LOAD"), text)
+    assert(text.contains("250"), text)
+}
+
+test "ADD without overflow names the sum and where it landed" {
+    val assembled = assembleSource(explainProgram(), pubvm8())
+    var machine = Machine(pubvm8())
+    machine.load(assembled.image())
+    machine.step()
+    machine.step()
+    val before = machine.snapshot()
+    machine.step()
+    val after = machine.snapshot()
+    val text = instructionExplanation(before, after, "en")
+    assert(text.contains("250"), text)
+    assert(text.contains("20"), text)
+    assert(text.contains("270") == false, "8-bit ADD wraps, so 270 is never the stored value")
+}
+
+test "ADD overflow on PubVM-8 explains the wraparound and the carry flag" {
+    val assembled = assembleSource("LOAD A, 250\nLOAD B, 20\nADD A, B\nHALT\n", pubvm8())
+    var machine = Machine(pubvm8())
+    machine.load(assembled.image())
+    machine.step()
+    machine.step()
+    val before = machine.snapshot()
+    machine.step()
+    val after = machine.snapshot()
+    assert(after.carry())
+    val text = instructionExplanation(before, after, "en")
+    assert(text.contains("270"), "the full, untruncated sum: " + text)
+    assert(text.contains("overflow"), text)
+    assert(text.contains("14"), "the truncated, stored value: " + text)
+
+    val pt = instructionExplanation(before, after, "pt")
+    assert(pt.contains("overflow"), pt)
+}
+
+test "SUB that borrows explains the negative result" {
+    val assembled = assembleSource("LOAD A, 5\nLOAD B, 10\nSUB A, B\nHALT\n", pubvm8())
+    var machine = Machine(pubvm8())
+    machine.load(assembled.image())
+    machine.step()
+    machine.step()
+    val before = machine.snapshot()
+    machine.step()
+    val after = machine.snapshot()
+    assert(after.carry(), "a borrow sets the carry flag")
+    val text = instructionExplanation(before, after, "en")
+    assert(text.contains("borrow"), text)
+    assert(text.contains("-5") || text.contains("−5"), text)
+}
+
+test "a conditional jump explains whether it was taken" {
+    val assembled = assembleSource(
+        "LOAD A, 0\nJZ taken\nHALT\ntaken:\nHALT\n", pubvm8())
+    assert(assembled.ok())
+    var machine = Machine(pubvm8())
+    machine.load(assembled.image())
+    machine.step()
+    val before = machine.snapshot()
+    assert(before.zero())
+    machine.step()
+    val after = machine.snapshot()
+    val text = instructionExplanation(before, after, "en")
+    assert(text.contains("JZ"), text)
+    assert(text.contains("taken"), text)
+}
+
+test "HALT is explained with the final cycle count" {
+    val assembled = assembleSource(explainProgram(), pubvm8())
+    var machine = Machine(pubvm8())
+    machine.load(assembled.image())
+    machine.run(1000)
+    val after = machine.snapshot()
+    // The step from just before HALT: re-run from the start to get a `before`.
+    var fresh = Machine(pubvm8())
+    fresh.load(assembled.image())
+    fresh.step()
+    fresh.step()
+    fresh.step()
+    fresh.step()
+    val before = fresh.snapshot()
+    fresh.step()
+    val haltAfter = fresh.snapshot()
+    val text = instructionExplanation(before, haltAfter, "en")
+    assert(text.contains("HALT"), text)
+    assert(text.contains("" + haltAfter.cycles()), text)
+}
+
+test "PRINT is explained with the value it sent to output" {
+    val assembled = assembleSource(explainProgram(), pubvm8())
+    var machine = Machine(pubvm8())
+    machine.load(assembled.image())
+    machine.step()
+    machine.step()
+    machine.step()
+    val before = machine.snapshot()
+    machine.step()
+    val after = machine.snapshot()
+    val text = instructionExplanation(before, after, "en")
+    assert(text.contains("PRINT"), text)
+    assert(text.contains("14"), text)
+}
+
+test "running several cycles at once is summarised, not explained instruction by instruction" {
+    val assembled = assembleSource(explainProgram(), pubvm8())
+    var machine = Machine(pubvm8())
+    machine.load(assembled.image())
+    val before = machine.snapshot()
+    machine.run(1000)
+    val after = machine.snapshot()
+    val text = instructionExplanation(before, after, "en")
+    assert(text.contains("5"), text)
+    assert(text.contains("halted"), text)
+}
+
+test "nothing to explain before anything ran" {
+    var machine = Machine(pubvm8())
+    val state = machine.snapshot()
+    val text = instructionExplanation(state, state, "en")
+    assert(text.contains("Step"), text)
+    val pt = instructionExplanation(state, state, "pt")
+    assert(pt.contains("Passo"), pt)
+}
+
+// --- the controller side -----------------------------------------------------
+
+test "the controller exposes the explanation of the last Step" {
+    labSelectMachine(0)
+    labSetLanguage("en")
+    labAssemble(explainProgram())
+    assert(labExplanation().contains("Step"), labExplanation())
+    labStep()
+    labStep()
+    labStep()
+    assert(labExplanation().contains("ADD"), labExplanation())
+    assert(labExplanation().contains("270"), labExplanation())
+}
+
+test "the controller's explanation follows the selected language" {
+    labSelectMachine(0)
+    labAssemble(explainProgram())
+    labStep()
+    labSetLanguage("pt")
+    assert(labExplanation().contains("LOAD"), labExplanation())
+    labSetLanguage("en")
+}

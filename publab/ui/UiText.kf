@@ -180,6 +180,20 @@ String viewTitle(String language) {
     return "VIEW"
 }
 
+// --- educational layer (phase 7) ---
+
+String explainTitle(String language) {
+    if (isPt(language)) { return "EXPLICAÇÃO" }
+    return "EXPLANATION"
+}
+
+String noExplainYet(String language) {
+    if (isPt(language)) {
+        return "Monte um programa e clique em Passo para ver a explicação da instrução."
+    }
+    return "Assemble a program and press Step to see the instruction explained."
+}
+
 String stackNotImplementedNote(String language) {
     if (isPt(language)) {
         return "A stack aparece com o Advanced Mode (fase 8): SP, PUSH, POP, CALL e RET"

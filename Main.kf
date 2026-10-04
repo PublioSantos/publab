@@ -61,6 +61,11 @@ class Ui {
     static Label viewTitle = Label("")
     static Select memoryModes = Select(listOf("HEX"))
 
+    // The educational layer (phase 7): plain-language explanation of the last
+    // Step or Run, in the panel's own label.
+    static Label explainTitle = Label("")
+    static Label explanation = Label("")
+
     static Button assembleButton = Button("", () -> {})
     static Button resetButton = Button("", () -> {})
     static Button stepButton = Button("", () -> {})
@@ -115,6 +120,7 @@ void refresh() {
     Ui.memoryLegend.text = memoryLegend(language)
     Ui.changes.text = joinLines(changeLines(previous, state, previousWindow, window,
         base, language))
+    Ui.explanation.text = labExplanation()
 
     if (labDiagnostics().length > 0) {
         Ui.diagnostics.text = labDiagnostics()
@@ -153,6 +159,7 @@ void relabel() {
     Ui.changesTitle.text = changesTitle(language)
     Ui.viewTitle.text = viewTitle(language)
     Ui.stackNote.text = stackNotImplementedNote(language)
+    Ui.explainTitle.text = explainTitle(language)
 }
 
 // --- control handlers ---
@@ -321,6 +328,13 @@ main() {
     var changesPanel = View(panel)
     changesPanel.bind(Column(listOf(Ui.changesTitle, Ui.changes)))
 
+    // --- the educational layer: what the last instruction did (phase 7) ---
+    Ui.explainTitle = sectionTitle(Label(""))
+    Ui.explanation = Label("")
+    Ui.explanation.color = focusColor()
+    var explainPanel = View(panel)
+    explainPanel.bind(Column(listOf(Ui.explainTitle, Ui.explanation)))
+
     // --- debugger: the memory dump (section 26) ---
     Ui.memoryTitle = sectionTitle(Label(""))
     Ui.viewTitle = sectionTitle(Label(""))
@@ -349,7 +363,7 @@ main() {
         Ui.sourceTitle, Ui.editor, controls, Ui.message, Hr(),
         Ui.machineSummary, Ui.status, Ui.current, Ui.sourceLine, Hr(),
         Row(listOf(registersPanel, flagsPanel)),
-        changesPanel, memoryPanel,
+        explainPanel, changesPanel, memoryPanel,
         outputPanel, diagnosticsPanel,
         Hr(), poweredBy))
     var shell = View(root)
