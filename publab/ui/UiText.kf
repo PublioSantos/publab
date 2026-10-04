@@ -162,3 +162,29 @@ String pausedAtMessage(Int cycles, String language) {
     if (isPt(language)) { return "pausada — " + cycles + " ciclos, pronta para o próximo passo" }
     return "paused — " + cycles + " cycles, ready for the next step"
 }
+
+// --- debugger (phase 6) ---
+
+String memoryTitle(String language) {
+    if (isPt(language)) { return "MEMÓRIA" }
+    return "MEMORY"
+}
+
+String changesTitle(String language) {
+    if (isPt(language)) { return "MUDANÇAS DA ÚLTIMA INSTRUÇÃO" }
+    return "WHAT THE LAST INSTRUCTION CHANGED"
+}
+
+String viewTitle(String language) {
+    if (isPt(language)) { return "VISÃO" }
+    return "VIEW"
+}
+
+String stackNotImplementedNote(String language) {
+    if (isPt(language)) {
+        return "A stack aparece com o Advanced Mode (fase 8): SP, PUSH, POP, CALL e RET"
+            + " ainda não existem, então não há pilha para mostrar."
+    }
+    return "The stack view arrives with Advanced Mode (phase 8): SP, PUSH, POP, CALL"
+        + " and RET do not exist yet, so there is no stack to show."
+}

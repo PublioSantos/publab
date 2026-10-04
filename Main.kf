@@ -48,6 +48,19 @@ class Ui {
     static Label exampleTitle = Label("")
     static Label languageTitle = Label("")
 
+    // Debugger (phase 6). The memory dump and the change list are one label
+    // each: the generated page renders labels with `white-space: pre-wrap`, so
+    // a multi-line string is a multi-line panel.
+    static Label sourceLine = Label("")
+    static Label memoryTitle = Label("")
+    static Label memoryLegend = Label("")
+    static Label memoryDump = Label("")
+    static Label changesTitle = Label("")
+    static Label changes = Label("")
+    static Label stackNote = Label("")
+    static Label viewTitle = Label("")
+    static Select memoryModes = Select(listOf("HEX"))
+
     static Button assembleButton = Button("", () -> {})
     static Button resetButton = Button("", () -> {})
     static Button stepButton = Button("", () -> {})
@@ -74,18 +87,34 @@ void refresh() {
     val state = labState()
     val language = labLanguage()
 
+    val previous = labPreviousState()
+
     Ui.machineSummary.text = machineSummary(state, language)
     Ui.status.text = statusText(state, language)
     Ui.current.text = currentInstructionLine(state, language)
+    Ui.sourceLine.text = labSourceLine()
     Ui.message.text = labMessage()
-    Ui.flags.text = flagsText(state)
     Ui.output.text = outputText(state, language)
 
-    val registers = registerLines(state)
+    // Registers and flags carry a one-character marker for what the last
+    // instruction changed, so the columns never move.
+    Ui.flags.text = flagsTextWithChanges(previous, state)
+    val registers = registerLinesWithChanges(previous, state)
     Ui.regA.text = registers.get(0)
     Ui.regB.text = registers.get(1)
     Ui.regC.text = registers.get(2)
     Ui.regD.text = registers.get(3)
+
+    // The memory dump, from the real memory, following PC.
+    val base = labMemoryBase()
+    val window = labMemoryWindow()
+    val previousWindow = labPreviousMemoryWindow()
+    Ui.memoryDump.text = memoryHeader(labMemoryMode(), state.addressBits()) + "\n"
+        + joinLines(memoryRows(window, base, previousWindow, state.pc(),
+            labMemoryMode(), state.addressBits()))
+    Ui.memoryLegend.text = memoryLegend(language)
+    Ui.changes.text = joinLines(changeLines(previous, state, previousWindow, window,
+        base, language))
 
     if (labDiagnostics().length > 0) {
         Ui.diagnostics.text = labDiagnostics()
@@ -120,6 +149,10 @@ void relabel() {
     Ui.resetButton.text = resetButton(language)
     Ui.stepButton.text = stepButton(language)
     Ui.runButton.text = runButton(language)
+    Ui.memoryTitle.text = memoryTitle(language)
+    Ui.changesTitle.text = changesTitle(language)
+    Ui.viewTitle.text = viewTitle(language)
+    Ui.stackNote.text = stackNotImplementedNote(language)
 }
 
 // --- control handlers ---
@@ -167,6 +200,11 @@ void onExampleChange() {
 void onLanguageChange() {
     labSetLanguage(supportedLanguages().get(Ui.languages.selected()))
     relabel()
+    refresh()
+}
+
+void onMemoryModeChange() {
+    labSetMemoryMode(memoryModes().get(Ui.memoryModes.selected()))
     refresh()
 }
 
@@ -245,6 +283,8 @@ main() {
     Ui.status.bold = true
     Ui.current = Label("")
     Ui.current.color = dataColor()
+    Ui.sourceLine = Label("")
+    Ui.sourceLine.color = dimColor()
 
     Ui.registersTitle = sectionTitle(Label(""))
     Ui.regA = Label("")
@@ -274,16 +314,42 @@ main() {
     var diagnosticsPanel = View(panel)
     diagnosticsPanel.bind(Column(listOf(Ui.diagnosticsTitle, Ui.diagnostics)))
 
+    // --- debugger: what the last instruction changed (phase 6) ---
+    Ui.changesTitle = sectionTitle(Label(""))
+    Ui.changes = Label("")
+    Ui.changes.color = dataColor()
+    var changesPanel = View(panel)
+    changesPanel.bind(Column(listOf(Ui.changesTitle, Ui.changes)))
+
+    // --- debugger: the memory dump (section 26) ---
+    Ui.memoryTitle = sectionTitle(Label(""))
+    Ui.viewTitle = sectionTitle(Label(""))
+    Ui.memoryModes = Select(memoryModes())
+    Ui.memoryModes.setSelected(0)
+    Ui.memoryLegend = Label("")
+    Ui.memoryLegend.fontSize = 11
+    Ui.memoryLegend.color = dimColor()
+    Ui.memoryDump = Label("")
+    Ui.stackNote = Label("")
+    Ui.stackNote.fontSize = 11
+    Ui.stackNote.color = dimColor()
+    var memoryPanel = View(panel)
+    memoryPanel.bind(Column(listOf(
+        Row(listOf(Ui.memoryTitle, Ui.viewTitle, Ui.memoryModes)),
+        Ui.memoryLegend, Ui.memoryDump, Ui.stackNote)))
+
     // --- selector events ---
     Ui.machines.on("change", (e: Event) -> onMachineChange())
     Ui.examples.on("change", (e: Event) -> onExampleChange())
     Ui.languages.on("change", (e: Event) -> onLanguageChange())
+    Ui.memoryModes.on("change", (e: Event) -> onMemoryModeChange())
 
     // --- compose ---
     var body = Column(listOf(header, Hr(), selectors, Hr(),
         Ui.sourceTitle, Ui.editor, controls, Ui.message, Hr(),
-        Ui.machineSummary, Ui.status, Ui.current, Hr(),
+        Ui.machineSummary, Ui.status, Ui.current, Ui.sourceLine, Hr(),
         Row(listOf(registersPanel, flagsPanel)),
+        changesPanel, memoryPanel,
         outputPanel, diagnosticsPanel,
         Hr(), poweredBy))
     var shell = View(root)

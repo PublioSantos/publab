@@ -1,0 +1,316 @@
+package tests
+
+import publab.machine
+import publab.assembler
+import publab.ui
+
+// Phase 6 — the debugger views and the controller state behind them. Runs on
+// both targets, like the rest of publab.ui.
+
+String dbgProgram() {
+    return "LOAD A, 250\nLOAD B, 20\nADD A, B\nPRINT A\nHALT\n"
+}
+
+String storeProgram() {
+    return "LOAD A, 42\nSTORE [0x10], A\nHALT\n"
+}
+
+// --- memory dump geometry ---------------------------------------------------
+
+test "the memory window is aligned to its own size, so the dump does not slide" {
+    assert(memoryRowWidth() == 8)
+    assert(memoryWindowRows() == 16)
+    assert(memoryWindowSize() == 128)
+    assert(memoryWindowBaseFor(0) == 0)
+    assert(memoryWindowBaseFor(11) == 0)
+    assert(memoryWindowBaseFor(127) == 0)
+    assert(memoryWindowBaseFor(128) == 128)
+    assert(memoryWindowBaseFor(200) == 128)
+    assert(memoryWindowBaseFor(256) == 256)
+}
+
+test "a cell is rendered in the selected mode" {
+    assert(memoryModes().size == 3)
+    assert(cellText(74, "HEX") == "4A")
+    assert(cellText(0, "HEX") == "00")
+    assert(cellText(255, "HEX") == "FF")
+    assert(cellText(74, "DEC") == " 74")
+    assert(cellText(0, "DEC") == "  0")
+    assert(cellText(255, "DEC") == "255")
+    assert(cellText(74, "BIN") == "01001010")
+    assert(cellWidth("HEX") == 2 && cellWidth("DEC") == 3 && cellWidth("BIN") == 8)
+}
+
+test "the markers are one character wide, so no column ever moves" {
+    assert(cellSeparator(false, false) == " ")
+    assert(cellSeparator(true, false) == ">", "PC")
+    assert(cellSeparator(false, true) == "*", "changed")
+    assert(cellSeparator(true, true) == "#", "both")
+    assert(memoryLegend("en").contains("PC") && memoryLegend("en").contains("changed"))
+    assert(memoryLegend("pt").contains("mudou"))
+}
+
+test "the header lines up with the rows, in every mode" {
+    for (var mode in memoryModes()) {
+        val header = memoryHeader(mode, 16)
+        val rows = memoryRows(listOf(1, 2, 3, 4, 5, 6, 7, 8), 0, emptyIntList(), 0, mode, 16)
+        assert(header.length == rows.get(0).length,
+            mode + ": header " + header.length + " vs row " + rows.get(0).length)
+        assert(header.startsWith("ADDRESS"), header)
+        assert(header.contains("+0") && header.contains("+7"), header)
+    }
+}
+
+test "the dump shows the real program bytes, with PC marked" {
+    val assembled = assembleSource(dbgProgram(), pubvm8())
+    assert(assembled.ok())
+    var machine = Machine(pubvm8())
+    machine.load(assembled.image())
+    var window: List<Int> = listOf()
+    var i = 0
+    while (i < 16) { window.add(machine.memory.readByte(i)); i = i + 1 }
+
+    val rows = memoryRows(window, 0, emptyIntList(), machine.pc, "HEX", 16)
+    assert(rows.size == 2, "16 bytes is two rows of eight")
+    assert(rows.get(0) == "0000   >10 00 FA 10 01 14 21 00", rows.get(0))
+    assert(rows.get(1) == "0008    01 60 00 00 00 00 00 00", rows.get(1))
+    // FA is 250: the immediate of LOAD A, 250 really is in memory.
+    assert(rows.get(0).contains("FA"))
+}
+
+test "a cell written by the last instruction is marked, and only that cell" {
+    val assembled = assembleSource(storeProgram(), pubvm8())
+    assert(assembled.ok())
+    var machine = Machine(pubvm8())
+    machine.load(assembled.image())
+    machine.step()
+    var before: List<Int> = listOf()
+    var i = 0
+    while (i < 24) { before.add(machine.memory.readByte(i)); i = i + 1 }
+    machine.step()
+    var after: List<Int> = listOf()
+    i = 0
+    while (i < 24) { after.add(machine.memory.readByte(i)); i = i + 1 }
+
+    assert(before.get(16) == 0 && after.get(16) == 42, "the STORE reached 0x10")
+    assert(cellChanged(after, before, 16))
+    assert(cellChanged(after, before, 15) == false)
+    val rows = memoryRows(after, 0, before, machine.pc, "HEX", 16)
+    assert(rows.get(2).contains("*2A"), rows.get(2))
+    var marks = 0
+    for (var row in rows) {
+        var c = 0
+        while (c < row.length) {
+            if (row.charAt(c) == '*') { marks = marks + 1 }
+            c = c + 1
+        }
+    }
+    assert(marks == 1, "exactly one changed cell, found " + marks)
+}
+
+test "without a comparable previous window nothing is marked as changed" {
+    val window = listOf(1, 2, 3, 4, 5, 6, 7, 8)
+    // The shorter list goes through a `val`: a non-empty `listOf(…)` written
+    // inline as an argument INSIDE an assert throws on the JS target
+    // (notes/kof-compiler-findings.md, D-5).
+    val narrower = listOf(1, 2)
+    assert(cellChanged(window, emptyIntList(), 0) == false, "nothing to compare")
+    assert(cellChanged(window, narrower, 0) == false, "a different window size")
+    val rows = memoryRows(window, 0, emptyIntList(), 999, "HEX", 16)
+    assert(rows.get(0).contains("*") == false, rows.get(0))
+    assert(rows.get(0).contains(">") == false, "PC is outside this window")
+}
+
+// --- what the last instruction changed --------------------------------------
+
+test "the before and after of the golden ADD" {
+    val assembled = assembleSource(dbgProgram(), pubvm8())
+    var machine = Machine(pubvm8())
+    machine.load(assembled.image())
+    machine.step()
+    machine.step()
+    val before = machine.snapshot()
+    machine.step()
+    val after = machine.snapshot()
+
+    val lines = changeLines(before, after, emptyIntList(), emptyIntList(), 0, "en")
+    assert(lines.size == 2, "A and the carry flag; got " + lines.size)
+    assert(lines.get(0) == "A         before 250        after 14", lines.get(0))
+    assert(lines.get(1) == "C         before 0          after 1", lines.get(1))
+    val pt = changeLines(before, after, emptyIntList(), emptyIntList(), 0, "pt")
+    assert(pt.get(0).contains("antes 250") && pt.get(0).contains("depois 14"), pt.get(0))
+}
+
+test "an instruction that changes nothing says so" {
+    val assembled = assembleSource("LOAD A, 1\nJMP done\ndone:\nHALT\n", pubvm8())
+    var machine = Machine(pubvm8())
+    machine.load(assembled.image())
+    machine.step()
+    val before = machine.snapshot()
+    machine.step()
+    val after = machine.snapshot()
+    val lines = changeLines(before, after, emptyIntList(), emptyIntList(), 0, "en")
+    assert(lines.size == 1 && lines.get(0) == "(nothing changed)", lines.get(0))
+    assert(changeLines(before, after, emptyIntList(), emptyIntList(), 0, "pt").get(0)
+        == "(nada mudou)")
+}
+
+test "a changed memory cell appears in the change list" {
+    val before = listOf(0, 0, 0, 0)
+    val after = listOf(0, 42, 0, 0)
+    var machine = Machine(pubvm8())
+    val state = machine.snapshot()
+    val lines = changeLines(state, state, before, after, 16, "en")
+    assert(lines.size == 1)
+    assert(lines.get(0) == changeLine("[0011]", "0", "42", "en"), lines.get(0))
+    assert(lines.get(0).startsWith("[0011]"), lines.get(0))
+    assert(lines.get(0).contains("before 0"), lines.get(0))
+    assert(lines.get(0).endsWith("after 42"), lines.get(0))
+}
+
+test "registers and flags carry a discreet change marker" {
+    val assembled = assembleSource(dbgProgram(), pubvm8())
+    var machine = Machine(pubvm8())
+    machine.load(assembled.image())
+    machine.step()
+    machine.step()
+    val before = machine.snapshot()
+    machine.step()
+    val after = machine.snapshot()
+
+    val lines = registerLinesWithChanges(before, after)
+    assert(lines.size == 4)
+    assert(lines.get(0).startsWith("*A"), lines.get(0))
+    assert(lines.get(1).startsWith(" B"), lines.get(1))
+    assert(lines.get(2).startsWith(" C"), lines.get(2))
+    // The marker is one character, so the columns are the unmarked line's.
+    assert(lines.get(0).length == lines.get(1).length)
+    assert(lines.get(0).contains("DEC  14"), lines.get(0))
+
+    val flags = flagsTextWithChanges(before, after)
+    assert(flags == "C 1*   Z 0    N 0    O 0 ", flags)
+    assert(flagsTextWithChanges(after, after) == "C 1    Z 0    N 0    O 0 ",
+        flagsTextWithChanges(after, after))
+}
+
+// --- the source line --------------------------------------------------------
+
+test "a source line is read out of the source by number" {
+    val source = dbgProgram()
+    assert(sourceLineText(source, 1) == "LOAD A, 250")
+    assert(sourceLineText(source, 3) == "ADD A, B")
+    assert(sourceLineText(source, 5) == "HALT")
+    assert(sourceLineText(source, 99) == "", "a line past the end is empty")
+    assert(sourceLineText("    LOAD A, 1\n", 1) == "LOAD A, 1", "indentation is trimmed")
+}
+
+test "the source line follows PC through the assembler's source map" {
+    val assembled = assembleSource(dbgProgram(), pubvm8())
+    var machine = Machine(pubvm8())
+    machine.load(assembled.image())
+    assert(sourceLineView(assembled.sourceMap(), machine.pc, dbgProgram(), "en")
+        == "LINE 1    LOAD A, 250",
+        sourceLineView(assembled.sourceMap(), machine.pc, dbgProgram(), "en"))
+    machine.step()
+    machine.step()
+    assert(sourceLineView(assembled.sourceMap(), machine.pc, dbgProgram(), "en")
+        == "LINE 3    ADD A, B")
+    assert(sourceLineView(assembled.sourceMap(), machine.pc, dbgProgram(), "pt")
+        == "LINHA 3   ADD A, B")
+}
+
+test "PC off an instruction boundary says so instead of guessing a line" {
+    val assembled = assembleSource(dbgProgram(), pubvm8())
+    // Address 1 is the register byte of the first instruction, not a line.
+    val en = sourceLineView(assembled.sourceMap(), 1, dbgProgram(), "en")
+    assert(en == "(PC is not on a program instruction)", en)
+    assert(sourceLineView(assembled.sourceMap(), 1, dbgProgram(), "pt").contains("fora de uma"))
+}
+
+// --- the controller side ----------------------------------------------------
+
+test "the controller remembers the reading from before the last control" {
+    labSelectMachine(0)
+    labSetLanguage("en")
+    labAssemble(dbgProgram())
+    // Right after Assemble there is nothing to compare against.
+    assert(labPreviousState().cycles() == 0)
+    labStep()
+    labStep()
+    assert(labPreviousState().cycles() == 1, "the reading from before the second step")
+    labStep()
+    assert(labPreviousState().registers().get(0) == 250 as Long, "A before the ADD")
+    assert(labState().registers().get(0) == 14 as Long, "A after it")
+    val lines = changeLines(labPreviousState(), labState(),
+        labPreviousMemoryWindow(), labMemoryWindow(), labMemoryBase(), "en")
+    assert(lines.get(0).contains("before 250"), lines.get(0))
+    assert(lines.get(0).contains("after 14"), lines.get(0))
+}
+
+test "Assemble and Reset leave nothing marked as changed" {
+    labSelectMachine(0)
+    labAssemble(storeProgram())
+    labRun()
+    assert(labState().registers().get(0) == 42 as Long)
+    labReset()
+    val lines = changeLines(labPreviousState(), labState(),
+        labPreviousMemoryWindow(), labMemoryWindow(), labMemoryBase(), "en")
+    assert(lines.get(0) == "(nothing changed)", lines.get(0))
+}
+
+test "the memory window the controller serves is the real memory" {
+    labSelectMachine(0)
+    labAssemble(dbgProgram())
+    assert(labMemoryBase() == 0)
+    val window = labMemoryWindow()
+    assert(window.size == 128)
+    assert(window.get(0) == 0x10 && window.get(2) == 250, "the loaded image")
+    assert(window.get(127) == 0, "past the program, memory is zero")
+}
+
+test "the dump follows PC into another window and stops marking changes there" {
+    labSelectMachine(0)
+    // A jump past the first window, so the base moves.
+    labAssemble("JMP 0x90\nHALT\n")
+    assert(labMemoryBase() == 0)
+    labStep()
+    assert(labState().pc() == 144)
+    assert(labMemoryBase() == 128, "the dump moved to the window holding PC")
+    assert(labPreviousMemoryWindow().size == 0,
+        "the previous window was another region, so nothing is marked")
+}
+
+test "the memory view mode is the controller's, and the dump honours it" {
+    labSelectMachine(0)
+    labAssemble(dbgProgram())
+    assert(labMemoryMode() == "HEX")
+    val hex = memoryRows(labMemoryWindow(), labMemoryBase(), labPreviousMemoryWindow(),
+        labState().pc(), labMemoryMode(), 16)
+    assert(hex.get(0).contains("FA"), hex.get(0))
+    labSetMemoryMode("DEC")
+    assert(labMemoryMode() == "DEC")
+    val dec = memoryRows(labMemoryWindow(), labMemoryBase(), labPreviousMemoryWindow(),
+        labState().pc(), labMemoryMode(), 16)
+    assert(dec.get(0).contains("250"), dec.get(0))
+    labSetMemoryMode("BIN")
+    val bin = memoryRows(labMemoryWindow(), labMemoryBase(), labPreviousMemoryWindow(),
+        labState().pc(), labMemoryMode(), 16)
+    assert(bin.get(0).contains("11111010"), bin.get(0))
+    labSetMemoryMode("HEX")
+}
+
+test "the controller reports the source line, and the source it assembled" {
+    labSelectMachine(0)
+    labSetLanguage("en")
+    labAssemble(dbgProgram())
+    assert(labAssembledSource() == dbgProgram())
+    assert(labSourceMap().size == 5, "one entry per instruction")
+    assert(labSourceLine() == "LINE 1    LOAD A, 250", labSourceLine())
+    labStep()
+    labStep()
+    assert(labSourceLine() == "LINE 3    ADD A, B", labSourceLine())
+    // A failed assembly leaves no map and no source to point at.
+    labAssemble("PUSH A\n")
+    assert(labSourceMap().size == 0)
+    assert(labAssembledSource() == "")
+}

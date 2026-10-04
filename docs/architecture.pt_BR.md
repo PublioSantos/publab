@@ -10,8 +10,7 @@
 ├─────────────────────────────┤
 │      Educational Layer      │  fase 7   — não implementada
 ├─────────────────────────────┤
-│       Debugger / State      │  fase 6   — o MachineState existe; o
-│                             │             debugger em si, não
+│       Debugger / State      │  publab/ui/Debugger.kf + Lab.kf (fase 6)
 ├─────────────────────────────┤
 │      Execution Engine       │  publab/machine/Engine.kf
 ├─────────────────────────────┤
@@ -79,13 +78,18 @@ pacotes.
 ```
 publab/
 ├── kof.toml                 manifesto do projeto (faz da raiz o module root)
+├── Main.kf                  a janela do laboratório — o entry da aplicação,
+│                            na raiz do módulo, então seu pacote é ""
 ├── publab/
-│   ├── app/                 identidade do produto, incl. a atribuição ao Kof
+│   ├── app/                 identidade do produto e os exemplos embutidos
 │   ├── machine/             PubVM: palavra, memória, registradores, flags,
 │   │                        ALU, tabela de opcodes, decoder, engine
-│   └── assembler/           PubASM: lexer, parser, assembler, diagnostics
+│   ├── assembler/           PubASM: lexer, parser, assembler, diagnostics
+│   └── ui/                  UiText, Presenter, Debugger, Lab (o controlador)
 ├── tests/                   um programa por arquivo, rodados por `kof test tests`
 ├── examples/                programas PubASM, executados pela suíte
+├── tools/serve/             servidor de dev para o build da UI (não é PubLab)
+├── notes/                   notas locais de engenharia, não documentação
 └── docs/
 ```
 
@@ -130,9 +134,9 @@ antes de editar o código:
   `js`, e os resultados são idênticos. O SG-002 não é problema para este
   núcleo. O uso continua confinado a `Word.kf`, `Alu.kf`, `Memory.kf` e um
   helper em `Assembler.kf`.
-- **Dois defeitos de geração de código do target JS determinam como o fluxo de
-  controle é escrito aqui**, ambos achados na fase 5A e documentados com
-  repro mínimo em `notes/kof-compiler-findings.md`:
+- **Cinco divergências do toolchain determinam como este código é escrito**,
+  cada uma com repro mínimo em `notes/kof-compiler-findings.md` (D-1 a D-5).
+  As duas que restringem fluxo de controle:
   - **Nunca colocar `return` antecipado dentro de um `if` aninhado no ramo
     `else`** quando há mais statements depois dele nesse ramo — o target JS
     descarta o `return` final da função e ela devolve `undefined`. Usar ponto
@@ -140,6 +144,17 @@ antes de editar o código:
   - **Nunca proteger uma indexação com `&&` na mesma condição** —
     `list.size > 0 && list.get(list.size - 1)` avalia o lado direito no target
     JS mesmo com o esquerdo falso. Usar `if` aninhado. (Pass 1 do assembler.)
+
+  E três outras, na camada de UI:
+
+  - **`textarea.text = …` não passa a verificação de bytecode no JVM** (D-3).
+    `setText` funciona; `Label` e `Input` não são afetados.
+  - **`setStyle(Style("…"))` com o literal inline é no-op SILENCIOSO no JS**
+    (D-4). Hoistar o `Style` para um `val` — a atribuição do rodapé é branca
+    por causa disso.
+  - **um `listOf(…)` não-vazio inline como argumento dentro de um `assert`
+    estoura no JS** (D-5). Os testes hoistam para `val`; produção não é
+    afetada.
 - **`List<T>` de um `record` local do pacote não pode ser anotada vazia**
   (`var l: List<OpSpec> = listOf()` dá SEM010 dentro do próprio pacote). Ou se
   semeia a lista com o primeiro elemento, ou se escreve o nome totalmente

@@ -1,0 +1,242 @@
+package publab.ui
+
+import publab.machine
+import publab.assembler
+
+// The debugger's views: the memory dump, the before/after of the last
+// instruction, and the source line the machine is on.
+//
+// Pure, like the rest of publab.ui — these take state and return strings, so
+// they are tested on both targets even though widgets only render on KofJS.
+
+// --- memory dump (section 26) -----------------------------------------------
+
+Int memoryRowWidth() {
+    return 8
+}
+
+Int memoryWindowRows() {
+    return 16
+}
+
+Int memoryWindowSize() {
+    return memoryRowWidth() * memoryWindowRows()
+}
+
+// The window is aligned to its own size, so it does not slide a byte at a time
+// as PC advances: the dump stays still and PC moves across it.
+Int memoryWindowBaseFor(Int address) {
+    return (address / memoryWindowSize()) * memoryWindowSize()
+}
+
+List<String> memoryModes() {
+    return listOf("HEX", "DEC", "BIN")
+}
+
+Int cellWidth(String mode) {
+    if (mode == "DEC") { return 3 }
+    if (mode == "BIN") { return 8 }
+    return 2
+}
+
+String cellText(Int value, String mode) {
+    if (mode == "DEC") { return padLeft("" + value, 3) }
+    if (mode == "BIN") { return toBin(value as Long, 8) }
+    return toHex(value as Long, 2)
+}
+
+// Each cell is printed as one separator character plus the value, so the
+// markers never change the column width:
+//
+//   '>' the cell PC is on      '*' changed by the last instruction
+//   '#' both                   ' ' neither
+String cellSeparator(Bool atPc, Bool changed) {
+    if (atPc) {
+        if (changed) { return "#" }
+        return ">"
+    }
+    if (changed) { return "*" }
+    return " "
+}
+
+String memoryLegend(String language) {
+    if (isPt(language)) { return ">  PC        *  mudou no último passo" }
+    return ">  PC        *  changed by the last step"
+}
+
+// "ADDRESS   +0 +1 +2 +3 +4 +5 +6 +7"
+String memoryHeader(String mode, Int addressBits) {
+    var out = padRight("ADDRESS", addressBytes(addressBits) * 2 + 3)
+    var column = 0
+    while (column < memoryRowWidth()) {
+        out = out + " " + padLeft("+" + column, cellWidth(mode))
+        column = column + 1
+    }
+    return out
+}
+
+// `previous` may be empty (nothing to compare against yet) or from another
+// window base, in which case no cell is marked as changed.
+Bool cellChanged(List<Int> window, List<Int> previous, Int index) {
+    if (previous.size != window.size) { return false }
+    if (index >= previous.size) { return false }
+    return window.get(index) != previous.get(index)
+}
+
+List<String> memoryRows(List<Int> window, Int base, List<Int> previous, Int pc,
+                        String mode, Int addressBits) {
+    var rows: List<String> = listOf()
+    var offset = 0
+    while (offset < window.size) {
+        var line = toHex((base + offset) as Long, addressBytes(addressBits) * 2) + "   "
+        var column = 0
+        while (column < memoryRowWidth()) {
+            val index = offset + column
+            if (index < window.size) {
+                val address = base + index
+                line = line + cellSeparator(address == pc, cellChanged(window, previous, index))
+                line = line + cellText(window.get(index), mode)
+            }
+            column = column + 1
+        }
+        rows.add(line)
+        offset = offset + memoryRowWidth()
+    }
+    return rows
+}
+
+// --- what the last instruction changed (sections 16 and 48) -----------------
+
+String beforeWord(String language) {
+    if (isPt(language)) { return "antes" }
+    return "before"
+}
+
+String afterWord(String language) {
+    if (isPt(language)) { return "depois" }
+    return "after"
+}
+
+String noChangeMessage(String language) {
+    if (isPt(language)) { return "(nada mudou)" }
+    return "(nothing changed)"
+}
+
+String changeLine(String name, String before, String after, String language) {
+    return padRight(name, 10)
+        + padRight(beforeWord(language) + " " + before, 18)
+        + afterWord(language) + " " + after
+}
+
+// Registers, then flags, then the memory cells of the visible window. Only
+// what actually changed appears.
+List<String> changeLines(MachineState before, MachineState after,
+                         List<Int> previousWindow, List<Int> window, Int base,
+                         String language) {
+    var lines: List<String> = listOf()
+    var i = 0
+    while (i < after.registers().size) {
+        if (i < before.registers().size) {
+            val was = before.registers().get(i)
+            val now = after.registers().get(i)
+            if (was != now) {
+                lines.add(changeLine(after.registerNames().get(i), "" + was, "" + now, language))
+            }
+        }
+        i = i + 1
+    }
+    if (before.carry() != after.carry()) {
+        lines.add(changeLine("C", flagDigit(before.carry()), flagDigit(after.carry()), language))
+    }
+    if (before.zero() != after.zero()) {
+        lines.add(changeLine("Z", flagDigit(before.zero()), flagDigit(after.zero()), language))
+    }
+    if (before.negative() != after.negative()) {
+        lines.add(changeLine("N", flagDigit(before.negative()), flagDigit(after.negative()), language))
+    }
+    if (before.overflow() != after.overflow()) {
+        lines.add(changeLine("O", flagDigit(before.overflow()), flagDigit(after.overflow()), language))
+    }
+    var index = 0
+    while (index < window.size) {
+        if (cellChanged(window, previousWindow, index)) {
+            lines.add(changeLine("[" + toHex((base + index) as Long, 4) + "]",
+                "" + previousWindow.get(index), "" + window.get(index), language))
+        }
+        index = index + 1
+    }
+    if (lines.size == 0) { lines.add(noChangeMessage(language)) }
+    return lines
+}
+
+// --- register and flag lines that mark what changed ------------------------
+
+// One leading character, so the columns do not move: '*' changed, ' ' not.
+List<String> registerLinesWithChanges(MachineState before, MachineState after) {
+    var lines: List<String> = listOf()
+    var i = 0
+    for (var row in registerRows(after)) {
+        var marker = " "
+        if (i < before.registers().size) {
+            if (before.registers().get(i) != after.registers().get(i)) { marker = "*" }
+        }
+        lines.add(marker + registerRowText(row, after.wordSize()))
+        i = i + 1
+    }
+    return lines
+}
+
+String flagWithChange(String name, Bool was, Bool now) {
+    var marker = " "
+    if (was != now) { marker = "*" }
+    return name + " " + flagDigit(now) + marker
+}
+
+String flagsTextWithChanges(MachineState before, MachineState after) {
+    return flagWithChange("C", before.carry(), after.carry())
+        + "   " + flagWithChange("Z", before.zero(), after.zero())
+        + "   " + flagWithChange("N", before.negative(), after.negative())
+        + "   " + flagWithChange("O", before.overflow(), after.overflow())
+}
+
+// --- the source line the machine is on (section 16) ------------------------
+
+String lineWordFor(String language) {
+    if (isPt(language)) { return "LINHA" }
+    return "LINE"
+}
+
+String outsideProgramMessage(String language) {
+    if (isPt(language)) { return "(PC fora de uma instrução do programa)" }
+    return "(PC is not on a program instruction)"
+}
+
+// The text of a 1-based line of the source, without its indentation.
+String sourceLineText(String source, Int line) {
+    var current = 1
+    var out = ""
+    var i = 0
+    val n = source.length
+    while (i < n) {
+        val c = source.charAt(i)
+        if (c == '\n') {
+            current = current + 1
+        } else {
+            if (current == line) { out = out + c }
+        }
+        i = i + 1
+    }
+    return out.trim()
+}
+
+// "LINE 3    ADD A, B", or an honest note when PC is not on an instruction
+// the assembler emitted (after a jump into the middle of a word, say).
+String sourceLineView(List<SourceMapEntry> sourceMap, Int pc, String source,
+                      String language) {
+    val found = lineForAddress(sourceMap, pc)
+    if (found.found()) {
+        return padRight(lineWordFor(language) + " " + found.line(), 10)
+            + sourceLineText(source, found.line())
+    }
+    return outsideProgramMessage(language)
+}

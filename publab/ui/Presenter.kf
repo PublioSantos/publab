@@ -145,3 +145,15 @@ String currentStateMessage(MachineState state, Bool assembled, Int imageBytes,
     if (assembled) { return assembledMessage(imageBytes, language) }
     return notAssembledMessage(language)
 }
+
+// The generated page renders a label with `white-space: pre-wrap`, so a
+// multi-line string is one widget showing several lines — which is what the
+// memory dump and the change list are.
+String joinLines(List<String> lines) {
+    var out = ""
+    for (var line in lines) {
+        if (out.length > 0) { out = out + "\n" }
+        out = out + line
+    }
+    return out
+}

@@ -23,6 +23,16 @@ class Lab {
     static String message = ""
     static Bool assembled = false
     static Int imageBytes = 0
+
+    // Debugger state (phase 6). `previous` is the reading from just before the
+    // last control acted, which is what lets the interface show what the last
+    // instruction changed instead of only where the machine ended up.
+    static MachineState previous = Machine(pubvm8()).snapshot()
+    static List<Int> previousMemory = emptyIntList()
+    static Int previousMemoryBase = 0
+    static List<SourceMapEntry> sourceMap = emptySourceMap()
+    static String assembledSource = ""
+    static String memoryMode = "HEX"
 }
 
 // A run from the interface must end. A program can loop forever, and a
@@ -100,7 +110,10 @@ void labSelectMachine(Int index) {
     Lab.assembled = false
     Lab.imageBytes = 0
     Lab.diagnostics = ""
+    Lab.sourceMap = emptySourceMap()
+    Lab.assembledSource = ""
     Lab.message = notAssembledMessage(Lab.language)
+    labForgetChanges()
 }
 
 Int labSelectedMachine() {
@@ -113,6 +126,85 @@ Int labSelectedMachine() {
     return index
 }
 
+// --- debugger reads (phase 6) ----------------------------------------------
+
+// The reading from just before the last control acted.
+MachineState labPreviousState() {
+    return Lab.previous
+}
+
+List<SourceMapEntry> labSourceMap() {
+    return Lab.sourceMap
+}
+
+// The source the loaded image was assembled from — not the editor's current
+// text, which may have been edited since.
+String labAssembledSource() {
+    return Lab.assembledSource
+}
+
+String labMemoryMode() {
+    return Lab.memoryMode
+}
+
+void labSetMemoryMode(String mode) {
+    Lab.memoryMode = mode
+}
+
+// The dump follows PC, aligned to the window size.
+Int labMemoryBase() {
+    return memoryWindowBaseFor(Lab.machine.pc)
+}
+
+List<Int> labMemoryWindowAt(Int base) {
+    var window: List<Int> = listOf()
+    var offset = 0
+    while (offset < memoryWindowSize()) {
+        val address = base + offset
+        if (address < Lab.config.memorySize()) {
+            window.add(Lab.machine.memory.readByte(address))
+        }
+        offset = offset + 1
+    }
+    return window
+}
+
+List<Int> labMemoryWindow() {
+    return labMemoryWindowAt(labMemoryBase())
+}
+
+// Only comparable when it came from the same window: otherwise the dump would
+// mark cells as changed by comparing two different regions of memory.
+List<Int> labPreviousMemoryWindow() {
+    if (Lab.previousMemoryBase == labMemoryBase()) {
+        return Lab.previousMemory
+    }
+    return emptyIntList()
+}
+
+// Where in the source the machine is, through the assembler's source map.
+String labSourceLine() {
+    return sourceLineView(Lab.sourceMap, Lab.machine.pc, Lab.assembledSource, Lab.language)
+}
+
+// Called before a control acts, so that afterwards the interface can show the
+// difference the instruction made.
+void labRemember() {
+    Lab.previous = Lab.machine.snapshot()
+    Lab.previousMemoryBase = labMemoryBase()
+    Lab.previousMemory = labMemoryWindowAt(Lab.previousMemoryBase)
+}
+
+// Used when there is nothing to compare against — after Assemble, Reset or a
+// machine change, where marking every cell as "changed" would be noise.
+void labForgetChanges() {
+    Lab.previous = Lab.machine.snapshot()
+    Lab.previousMemoryBase = labMemoryBase()
+    Lab.previousMemory = labMemoryWindowAt(Lab.previousMemoryBase)
+}
+
+// --- controls ---------------------------------------------------------------
+
 // Assembles the editor's text for the selected machine and, when it is clean,
 // loads the image. A failed assembly leaves an empty machine on purpose: a
 // program that did not assemble must never appear to be running.
@@ -124,12 +216,17 @@ Bool labAssemble(String source) {
         Lab.machine.load(result.image())
         Lab.assembled = true
         Lab.imageBytes = result.byteCount()
+        Lab.sourceMap = result.sourceMap()
+        Lab.assembledSource = source
         Lab.message = assembledMessage(result.byteCount(), Lab.language)
     } else {
         Lab.assembled = false
         Lab.imageBytes = 0
+        Lab.sourceMap = emptySourceMap()
+        Lab.assembledSource = ""
         Lab.message = assemblyFailedMessage(Lab.language)
     }
+    labForgetChanges()
     return result.ok()
 }
 
@@ -142,6 +239,7 @@ void labReset() {
     } else {
         Lab.message = notAssembledMessage(Lab.language)
     }
+    labForgetChanges()
 }
 
 Bool labStep() {
@@ -149,6 +247,7 @@ Bool labStep() {
         Lab.message = notAssembledMessage(Lab.language)
         return false
     }
+    labRemember()
     val executed = Lab.machine.step()
     Lab.message = stepMessage(Lab.machine.snapshot(), Lab.language)
     return executed
@@ -159,6 +258,7 @@ Int labRun() {
         Lab.message = notAssembledMessage(Lab.language)
         return 0
     }
+    labRemember()
     val cycles = Lab.machine.run(labRunBudget())
     Lab.message = runMessage(Lab.machine.snapshot(), Lab.language)
     return cycles

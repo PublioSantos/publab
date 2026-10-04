@@ -10,8 +10,7 @@
 ├─────────────────────────────┤
 │      Educational Layer      │  phase 7   — not implemented
 ├─────────────────────────────┤
-│       Debugger / State      │  phase 6   — MachineState exists; the
-│                             │              debugger itself does not
+│       Debugger / State      │  publab/ui/Debugger.kf + Lab.kf (phase 6)
 ├─────────────────────────────┤
 │      Execution Engine       │  publab/machine/Engine.kf
 ├─────────────────────────────┤
@@ -78,13 +77,18 @@ A directory **is** a package in Kof, so the tree is also the package tree.
 ```
 publab/
 ├── kof.toml                 project manifest (makes the root the module root)
+├── Main.kf                  the laboratory window — the application entry,
+│                            at the module root, so its package is ""
 ├── publab/
-│   ├── app/                 product identity, incl. the Kof attribution
+│   ├── app/                 product identity and the embedded examples
 │   ├── machine/             PubVM: word, memory, registers, flags, ALU,
 │   │                        opcode table, decoder, execution engine
-│   └── assembler/           PubASM: lexer, parser, assembler, diagnostics
+│   ├── assembler/           PubASM: lexer, parser, assembler, diagnostics
+│   └── ui/                  UiText, Presenter, Debugger, Lab (the controller)
 ├── tests/                   one program per file, run by `kof test tests`
 ├── examples/                PubASM programs, executed by the test suite
+├── tools/serve/             development server for the built UI (not PubLab)
+├── notes/                   local engineering notes, not published docs
 └── docs/
 ```
 
@@ -126,9 +130,9 @@ before editing the code:
   word on `jvm` and on `js`, and the results are identical. SG-002 is not a
   problem for this core. The usage stays confined to `Word.kf`, `Alu.kf`,
   `Memory.kf` and one helper in `Assembler.kf`.
-- **Two JS-target codegen defects shape how control flow is written here**,
-  both found in phase 5A and documented with minimal repros in
-  `notes/kof-compiler-findings.md`:
+- **Five toolchain divergences shape how this code is written**, each with a
+  minimal repro in `notes/kof-compiler-findings.md` (D-1 to D-5). The two that
+  constrain control flow:
   - **Never put an early `return` inside an `if` nested in an `else` branch**
     when more statements follow it in that branch — the JS target drops the
     function's trailing `return` and the function yields `undefined`. Use a
@@ -137,6 +141,16 @@ before editing the code:
     `list.size > 0 && list.get(list.size - 1)` evaluates the right side on the
     JS target even when the left is false. Use a nested `if`. (Pass 1 of the
     assembler.)
+
+  And three more, in the UI layer:
+
+  - **`textarea.text = …` fails bytecode verification on the JVM** (D-3).
+    `setText` works; `Label` and `Input` are unaffected.
+  - **`setStyle(Style("…"))` with the literal inline is a SILENT no-op on JS**
+    (D-4). Hoist the `Style` into a `val` first — the footer attribution is
+    white because of that.
+  - **a non-empty `listOf(…)` inline as an argument inside an `assert` throws
+    on JS** (D-5). Tests hoist it into a `val`; production code is unaffected.
 - **`List<T>` of a package-local `record` cannot be annotated empty**
   (`var l: List<OpSpec> = listOf()` trips SEM010 inside its own package).
   Either seed the list with its first element, or spell the fully-qualified

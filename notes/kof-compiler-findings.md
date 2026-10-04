@@ -336,3 +336,59 @@ do emissor (`JsBackend`, registro de `__kofStyles`) — e conferir se a mesma
 coisa acontece com `View(Style("…"))` inline, que não testei. O caminho
 `val` + `View(val)` e `val` + `setStyle(val)` estão ambos verificados
 funcionando.
+
+---
+
+# Fase 6 — divergência no harness de teste (04/10/2026)
+
+**Nada reportado como issue** — nota local.
+
+## D-5. `listOf(...)` não-vazio inline como argumento DENTRO de `assert` quebra no JS
+
+```kof
+Int sizeOf(List<Int> l) { return l.size }
+
+test "x" {
+    assert(sizeOf(listOf(1, 2)) == 2)     // JS: TypeError: Cannot read
+}                                          //     property 'length' of undefined
+```
+
+```
+JVM: passa
+JS:  TypeError: Cannot read property 'length' of undefined
+```
+
+Caracterização — o gatilho é estreito, e é do `assert`, não do código normal:
+
+| forma | JS |
+|---|---|
+| `assert(sizeOf(listOf(1, 2)) == 2)` | **quebra** |
+| `assert(sizeOf(listOf()) == 0)` (literal **vazio**) | ok |
+| `val a = sizeOf(listOf(1, 2))` e depois `assert(a == 2)` | ok |
+| `listOf(1, 2)` inline como argumento dentro de um `while` | ok |
+| `listOf(1, 2)` hoistado para `val` e passado | ok |
+
+Fora do `assert` o literal inline funciona, inclusive repetido num laço — o
+que aponta para o lowering do próprio `assert` (que aparentemente avalia a
+condição mais de uma vez, e o literal emitido como temporário só sobrevive à
+primeira avaliação). Observado primeiro com um `println(expr)` seguido de
+`assert(expr)`: o `println` imprimia `false` corretamente e o `assert` da
+linha seguinte estourava.
+
+**Não afeta código de produção** — nenhum caminho do PubLab passa um literal
+de lista inline dentro de um `assert`; é um defeito do harness de teste. A
+mesma família do D-4 (`Style(...)` inline como argumento), o que sugere uma
+causa comum: literal construtor emitido como temporário em posição de
+argumento.
+
+### Correção no PubLab
+
+`tests/debugger_test.kf` hoista o literal para um `val`, com comentário.
+
+### Antes de abrir issue
+
+Juntar com o D-4 e checar o emissor de argumentos do `JsBackend` — os dois
+podem ser o mesmo defeito visto de dois ângulos (um silencioso, um fatal).
+Vale também medir se o `assert` realmente avalia a condição duas vezes no
+target JS, porque isso por si só é uma diferença de semântica em relação ao
+JVM, independente de literais.

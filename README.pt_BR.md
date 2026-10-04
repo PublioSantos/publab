@@ -73,7 +73,7 @@ estar coberto pela suíte de testes.
 | 4 | PubVM-32 (mesmo núcleo, palavra maior) | **concluída** |
 | 5A | Paridade do núcleo no target JS | **concluída** |
 | 5B | UI mínima | **concluída** |
-| 6 | Debugger | não iniciada |
+| 6 | Debugger | **concluída** |
 | 7 | Camada educacional | não iniciada |
 | 8 | Advanced Mode — X, Y, SP, FP, stack, shifts, saltos extras | não iniciada |
 | 9 | Modelo educacional do 8051 | não iniciada |
@@ -99,8 +99,24 @@ que os testes exercitam.
 kof run Main.kf --target js
 ```
 
-O que ela ainda **não** tem: a visão de memória, a stack, destaque de
-mudanças, Pause e as explicações educacionais — isso é das fases 6 a 8.
+O debugger da fase 6 acrescenta: o dump de memória em hexadecimal, decimal ou
+binário com o PC e as células escritas pela última instrução marcados, uma
+lista antes/depois de tudo o que aquela instrução mudou, um marcador de uma
+coluna nos registradores e nas flags, e a linha da fonte em que o PC está,
+pelo source map do assembler.
+
+O que ela ainda **não** tem: as explicações educacionais (fase 7) e o
+Advanced Mode (fase 8). Duas ausências são deliberadas, não pendências:
+
+- **Sem visão de stack.** `SP`, `PUSH`, `POP`, `CALL` e `RET` ainda não
+  existem, então não há pilha para mostrar. O painel de memória diz isso em
+  vez de desenhar uma caixa vazia.
+- **Sem botão Pause.** O runtime de UI JS do Kof não tem timer, então uma
+  execução não pode ser interrompida por um botão — o clique não chegaria
+  enquanto o run executa. O que existe no lugar é real: o `Run` é limitado
+  por um orçamento de ciclos, informa que não terminou e continua de onde
+  parou. O engine mantém o `requestPause()` para um chamador capaz de
+  acionar a máquina em fatias.
 
 As instruções do Advanced Mode (`PUSH`, `POP`, `CALL`, `RET`, `SHL`, `SHR`,
 `ROL`, `ROR`, `JN`, `JO`, `JNZ`, `JNC`, `ENTER`, `LEAVE`) e os registradores

@@ -70,7 +70,7 @@ unless it is covered by the test suite.
 | 4 | PubVM-32 (same core, wider word) | **done** |
 | 5A | JS-target parity for the core | **done** |
 | 5B | Minimal UI | **done** |
-| 6 | Debugger | not started |
+| 6 | Debugger | **done** |
 | 7 | Educational layer | not started |
 | 8 | Advanced Mode — X, Y, SP, FP, stack, shifts, extra jumps | not started |
 | 9 | 8051 educational model | not started |
@@ -94,9 +94,24 @@ the diagnostics. It renders in the browser from the same core the tests run.
 kof run Main.kf --target js
 ```
 
-What it does **not** have yet: the memory view, the stack, change
-highlighting, Pause, and the educational explanations — those are phases 6
-to 8.
+The debugger of phase 6 adds to it: the memory dump in hexadecimal, decimal
+or binary with PC and the cells the last instruction wrote both marked, a
+before/after list of everything that instruction changed, a one-character
+change marker on the registers and flags, and the source line PC is on,
+through the assembler's source map.
+
+What it still does **not** have: the educational explanations (phase 7) and
+Advanced Mode (phase 8). Two absences are deliberate rather than pending:
+
+- **No stack view.** `SP`, `PUSH`, `POP`, `CALL` and `RET` do not exist yet,
+  so there is no stack to show. The memory panel says so instead of drawing
+  an empty box.
+- **No Pause button.** Kof's JS UI runtime has no timer, so a run cannot be
+  interrupted from a button — the click could not be delivered while the run
+  is executing. What exists instead is real: `Run` is bounded by a cycle
+  budget, reports that it did not finish, and continues where it left off.
+  The engine keeps `requestPause()` for a caller that can drive the machine
+  in slices.
 
 Advanced Mode instructions (`PUSH`, `POP`, `CALL`, `RET`, `SHL`, `SHR`, `ROL`,
 `ROR`, `JN`, `JO`, `JNZ`, `JNC`, `ENTER`, `LEAVE`) and the registers `X`, `Y`,
