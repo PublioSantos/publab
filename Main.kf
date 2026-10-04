@@ -25,16 +25,19 @@ class Ui {
     // long stacked page is not reachable at all — real tab switching, done
     // through setStyle("display: none"/"") on each section's own shell, is
     // the only way to reach the 8051/Cortex-M3/comparison sections.
-    static String activeTab = "pubvm"
+    // "pubvm8" | "pubvm16" | "pubvm32" | "8051" | "m3" | "compare"
+    static String activeTab = "pubvm8"
     static View pubvmShell = View(Style(""))
-    static Button navPubvmButton = Button("", () -> {})
+    static Button navPubvm8Button = Button("", () -> {})
+    static Button navPubvm16Button = Button("", () -> {})
+    static Button navPubvm32Button = Button("", () -> {})
     static Button nav8051Button = Button("", () -> {})
     static Button navM3Button = Button("", () -> {})
     static Button navCompareButton = Button("", () -> {})
 
     static Window window = Window("PubLab")
     static Textarea editor = Textarea("")
-    static Select machines = Select(listOf("PubVM-8"))
+    static Select machines = Select(listOf("PubVM-8"))  // kept for internal use; not shown in the nav row
     static Select examples = Select(listOf("overflow.pasm"))
     static Select languages = Select(listOf("English"))
 
@@ -491,18 +494,37 @@ Style navStyleFor(Bool active) {
 }
 
 void refreshTabVisibility() {
-    Ui.pubvmShell.setStyle(rootStyleFor(Ui.activeTab == "pubvm"))
+    val onPubvm = Ui.activeTab == "pubvm8" || Ui.activeTab == "pubvm16" || Ui.activeTab == "pubvm32"
+    Ui.pubvmShell.setStyle(rootStyleFor(onPubvm))
     Ui.lab8051Shell.setStyle(rootStyleFor(Ui.activeTab == "8051"))
     Ui.labM3Shell.setStyle(rootStyleFor(Ui.activeTab == "m3"))
     Ui.compareShell.setStyle(rootStyleFor(Ui.activeTab == "compare"))
-    Ui.navPubvmButton.setStyle(navStyleFor(Ui.activeTab == "pubvm"))
+    Ui.navPubvm8Button.setStyle(navStyleFor(Ui.activeTab == "pubvm8"))
+    Ui.navPubvm16Button.setStyle(navStyleFor(Ui.activeTab == "pubvm16"))
+    Ui.navPubvm32Button.setStyle(navStyleFor(Ui.activeTab == "pubvm32"))
     Ui.nav8051Button.setStyle(navStyleFor(Ui.activeTab == "8051"))
     Ui.navM3Button.setStyle(navStyleFor(Ui.activeTab == "m3"))
     Ui.navCompareButton.setStyle(navStyleFor(Ui.activeTab == "compare"))
 }
 
-void onNavPubvm() {
-    Ui.activeTab = "pubvm"
+void onNavPubvm8() {
+    Ui.activeTab = "pubvm8"
+    labSelectMachine(0)
+    refresh()
+    refreshTabVisibility()
+}
+
+void onNavPubvm16() {
+    Ui.activeTab = "pubvm16"
+    labSelectMachine(1)
+    refresh()
+    refreshTabVisibility()
+}
+
+void onNavPubvm32() {
+    Ui.activeTab = "pubvm32"
+    labSelectMachine(2)
+    refresh()
     refreshTabVisibility()
 }
 
@@ -522,9 +544,11 @@ void onNavCompare() {
 }
 
 void relabelNav(String language) {
-    Ui.navPubvmButton.text = "PubVM"
-    Ui.nav8051Button.text = lab8051Title(language)
-    Ui.navM3Button.text = labM3Title(language)
+    Ui.navPubvm8Button.text = "PubVM-8"
+    Ui.navPubvm16Button.text = "PubVM-16"
+    Ui.navPubvm32Button.text = "PubVM-32"
+    Ui.nav8051Button.text = "8051"
+    Ui.navM3Button.text = "CORTEX-M3 LAB"
     Ui.navCompareButton.text = compareTitle(language)
 }
 
@@ -538,7 +562,6 @@ void relabel() {
     Ui.flagsTitle.text = flagsTitle(language)
     Ui.outputTitle.text = outputTitle(language)
     Ui.diagnosticsTitle.text = diagnosticsTitle(language)
-    Ui.machineTitle.text = machineTitle(language)
     Ui.exampleTitle.text = exampleTitle(language)
     Ui.languageTitle.text = languageTitle(language)
     Ui.assembleButton.text = assembleButton(language)
@@ -677,8 +700,7 @@ main() {
     Ui.languages = Select(languageNames)
     Ui.languages.setSelected(0)
 
-    var selectors = Row(listOf(Ui.machineTitle, Ui.machines,
-        Ui.exampleTitle, Ui.examples,
+    var selectors = Row(listOf(Ui.exampleTitle, Ui.examples,
         Ui.languageTitle, Ui.languages))
 
     // --- source editor ---
@@ -788,7 +810,6 @@ main() {
     stackPanel.bind(Column(listOf(Ui.stackTitle, Ui.stackPointer, Ui.stackDump, Ui.stackNote)))
 
     // --- selector events ---
-    Ui.machines.on("change", (e: Event) -> onMachineChange())
     Ui.examples.on("change", (e: Event) -> onExampleChange())
     Ui.languages.on("change", (e: Event) -> onLanguageChange())
     Ui.memoryModes.on("change", (e: Event) -> onMemoryModeChange())
@@ -1026,15 +1047,21 @@ main() {
     Ui.pubvmShell.bind(pubvmBody)
 
     // --- tab navigation ---
-    Ui.navPubvmButton = Button("", () -> onNavPubvm())
+    Ui.navPubvm8Button = Button("", () -> onNavPubvm8())
+    Ui.navPubvm16Button = Button("", () -> onNavPubvm16())
+    Ui.navPubvm32Button = Button("", () -> onNavPubvm32())
     Ui.nav8051Button = Button("", () -> onNav8051())
     Ui.navM3Button = Button("", () -> onNavM3())
     Ui.navCompareButton = Button("", () -> onNavCompare())
-    var nav = Row(listOf(Ui.navPubvmButton, Ui.nav8051Button,
-        Ui.navM3Button, Ui.navCompareButton))
+    // Machine tabs: PubVM-8, PubVM-16, PubVM-32, 8051, CORTEX-M3 LAB
+    var machineRow = Row(listOf(Ui.navPubvm8Button, Ui.navPubvm16Button,
+        Ui.navPubvm32Button, Ui.nav8051Button, Ui.navM3Button))
+    // Comparison on its own line
+    var compareRow = Row(listOf(Ui.navCompareButton))
 
     // --- compose ---
-    var body = Column(listOf(header, divider(), selectors, divider(), nav, divider(),
+    var body = Column(listOf(header, divider(), selectors, divider(),
+        machineRow, divider(), compareRow, divider(),
         Ui.pubvmShell, Ui.lab8051Shell, Ui.labM3Shell, Ui.compareShell,
         divider(), footerRow))
     var shell = View(root)
