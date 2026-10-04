@@ -5,10 +5,26 @@ package publab.machine
 // describe the byte-addressable memory, which is independent of the word.
 record MachineConfig(String name, Int wordSize, Int memorySize, Int addressBits, Int entryPoint)
 
-// PubVM-8 — the variant implemented and validated in phase 1.
-// PubVM-16 and PubVM-32 are the same core with wordSize 16 / 32 (phases 3-4).
 MachineConfig pubvm8() {
     return MachineConfig("PubVM-8", 8, 65536, 16, 0)
+}
+
+MachineConfig pubvm16() {
+    return MachineConfig("PubVM-16", 16, 65536, 16, 0)
+}
+
+MachineConfig pubvm32() {
+    return MachineConfig("PubVM-32", 32, 65536, 16, 0)
+}
+
+// The implemented variants, in order. One core, three configurations — this
+// list is what a machine selector offers, and what the conformance suite
+// iterates over.
+List<MachineConfig> allMachines() {
+    var machines = listOf(pubvm8())
+    machines.add(pubvm16())
+    machines.add(pubvm32())
+    return machines
 }
 
 Int addressMask(MachineConfig config) {

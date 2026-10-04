@@ -77,3 +77,30 @@ test "memory.pasm really leaves 42 at address 0x80" {
         assert(machine.memory.readByte(128) == 42)
     }
 }
+
+test "overflow.pasm gives the documented answer on all three variants" {
+    // The comment inside the example promises 14 / 270 / 270. This holds it
+    // to that promise on the real machines.
+    String? source = File("examples/overflow.pasm").readText()
+    if (source != null) {
+        var expected = listOf("14")
+        expected.add("270")
+        expected.add("270")
+        var index = 0
+        for (var config in allMachines()) {
+            val assembled = assembleSource(source, config)
+            assert(assembled.ok(), config.name() + ": "
+                + renderDiagnostics(assembled.diagnostics(), "en"))
+            var machine = Machine(config)
+            machine.load(assembled.image())
+            machine.run(1000)
+            assert(statusName(machine.status) == "HALTED", config.name())
+            assert(machine.output.get(0) == expected.get(index),
+                config.name() + ": expected " + expected.get(index)
+                    + " but printed " + machine.output.get(0))
+            assert(machine.flags.carry == (config.wordSize() == 8),
+                config.name() + ": carry only on the 8-bit variant")
+            index = index + 1
+        }
+    }
+}

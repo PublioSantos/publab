@@ -40,7 +40,14 @@ válido (útil como saída de laço).
 
 Um imediato negativo é guardado em complemento de dois: na PubVM-8, `-6` fica
 `250`. Um imediato é aceito quando cabe na palavra da máquina como valor sem
-sinal ou com sinal — em 8 bits, de `-128` a `255`.
+sinal ou com sinal — em 8 bits, de `-128` a `255`; em 16 bits, de `-32768` a
+`65535`; em 32 bits, de `-2147483648` a `4294967295`.
+
+Um valor fora da palavra da máquina é `ASM005`, que nomeia a palavra e a faixa
+válida. Só um literal acima de `999999999999` — muito além da palavra de
+qualquer variante — é recusado antes, pelo lexer, como `ASM011`; esse limite
+existe para o acumulador não transbordar em silêncio, e é alto de propósito
+para que a checagem da palavra seja a dona de todo erro realista.
 
 ## Operandos
 

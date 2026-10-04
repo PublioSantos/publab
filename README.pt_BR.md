@@ -69,8 +69,8 @@ estar coberto pela suíte de testes.
 |---|---|---|
 | 1 | Núcleo PubVM — registradores, memória, flags, ALU, execution engine | **concluída** |
 | 2 | PubASM — lexer, parser, labels, diagnostics, assembler | **concluída** |
-| 3 | PubVM-16 (mesmo núcleo, palavra maior) | não iniciada |
-| 4 | PubVM-32 (mesmo núcleo, palavra maior) | não iniciada |
+| 3 | PubVM-16 (mesmo núcleo, palavra maior) | **concluída** |
+| 4 | PubVM-32 (mesmo núcleo, palavra maior) | **concluída** |
 | 5 | UI mínima | não iniciada |
 | 6 | Debugger | não iniciada |
 | 7 | Camada educacional | não iniciada |
@@ -80,10 +80,12 @@ estar coberto pela suíte de testes.
 | 11 | Comparação entre arquiteturas | não iniciada |
 | 12 | Export | não iniciada |
 
-O núcleo da máquina é **parametrizado pelo tamanho da palavra** desde o
-começo: PubVM-8, -16 e -32 são uma implementação configurada de formas
-diferentes, nunca três cópias. As fases 1-2 expõem e validam somente a
-configuração de 8 bits.
+O núcleo da máquina é **parametrizado pelo tamanho da palavra**: PubVM-8, -16
+e -32 são uma implementação configurada de formas diferentes, nunca três
+cópias. As três estão validadas ponta a ponta — `tests/matrix_test.kf` roda o
+conjunto de instruções inteiro do Basic Mode, o encoding, imediatos, memória,
+PC, labels, branches e as quatro flags sobre cada variante, a partir de fonte
+PubASM idêntica.
 
 **Ainda não existe interface de usuário.** A máquina é acionada pela suíte de
 testes e por código Kof.
@@ -110,6 +112,10 @@ Precisa da toolchain Kof (construído contra a 0.5.0-beta):
 ```bash
 kof test tests
 ```
+
+## Licença
+
+MIT — veja [LICENSE](LICENSE).
 
 ## Documentação
 

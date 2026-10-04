@@ -43,9 +43,13 @@ Int hexDigitValue(Char c) {
 }
 
 // The widest literal PubASM accepts before the word-size check (ASM005) takes
-// over. Keeps a long input from overflowing silently.
+// over. Keeps a long input from overflowing the accumulator silently, while
+// staying well clear of any machine's word so that a value just above the
+// word maximum is reported as out of range for the WORD (ASM005) and not as a
+// malformed number — on PubVM-32, 4294967296 must say "does not fit in a
+// 32-bit word".
 Long literalCeiling() {
-    return 4294967295 as Long
+    return 999999999999 as Long
 }
 
 record NumberScan(Bool ok, Long value, String text, Int next)

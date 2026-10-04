@@ -5,8 +5,8 @@
 ; PubVM-16:  A = 270, C = 0
 ; PubVM-32:  A = 270, C = 0
 ;
-; Phases 1-2 implement and validate PubVM-8; the 16- and 32-bit variants are
-; the same core with a different word size (phases 3-4).
+; All three are the same core with a different word size. The test suite runs
+; this very file on each of them and checks the three answers above.
 
     LOAD A, 250
     LOAD B, 20

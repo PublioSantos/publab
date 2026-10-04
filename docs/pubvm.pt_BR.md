@@ -4,13 +4,23 @@
 
 A PubVM é a máquina virtual educacional criada para o PubLab. Existe **uma**
 implementação; PubVM-8, PubVM-16 e PubVM-32 são essa implementação com um
-`wordSize` diferente. As fases 1-2 expõem e validam a configuração de 8 bits.
+`wordSize` diferente. As três estão implementadas e validadas: a suíte de
+conformidade em `tests/matrix_test.kf` roda sobre cada variante devolvida por
+`allMachines()`.
 
 ```kof
 record MachineConfig(String name, Int wordSize, Int memorySize, Int addressBits, Int entryPoint)
 
-MachineConfig pubvm8() { return MachineConfig("PubVM-8", 8, 65536, 16, 0) }
+MachineConfig pubvm8()  { return MachineConfig("PubVM-8",  8,  65536, 16, 0) }
+MachineConfig pubvm16() { return MachineConfig("PubVM-16", 16, 65536, 16, 0) }
+MachineConfig pubvm32() { return MachineConfig("PubVM-32", 32, 65536, 16, 0) }
+
+List<MachineConfig> allMachines()   // as três, em ordem
 ```
+
+O tamanho da memória e o tamanho de endereço são **os mesmos nas três**: só a
+palavra muda. Palavra maior não significa mais memória — significa que cada
+valor ocupa mais da memória que já existe.
 
 ## Palavra
 
@@ -182,8 +192,16 @@ memória legível. `W` = `wordSize / 8`, `A` = `addressBits / 8` (2).
 | `0x60` | `PRINT reg` | `op reg` | 2 |
 
 Imediatos e endereços são little-endian. A largura do imediato segue o tamanho
-da palavra, então **a mesma fonte produz uma imagem diferente na PubVM-8 e na
-PubVM-16** — o que é parte do que o laboratório existe para mostrar.
+da palavra, então **a mesma fonte produz uma imagem diferente em cada
+variante** — o que é parte do que o laboratório existe para mostrar. O
+programa de conformidade da suíte monta em 63 bytes na PubVM-8, 72 na
+PubVM-16 e 90 na PubVM-32, a partir de fonte idêntica.
+
+Uma consequência prática que vale ensinar: como o programa é maior numa
+máquina mais larga, um endereço de dados que está livre na PubVM-8 pode cair
+**dentro do próprio código** na PubVM-32. Nada impede um `STORE` de
+sobrescrever código — é o que uma máquina real faz também — então os exemplos
+colocam seus dados fora do alcance da maior imagem.
 
 O `Opcodes.kf` guarda essa tabela uma vez; o assembler codifica a partir dela
 e o engine decodifica a partir dela, então os dois não podem divergir.

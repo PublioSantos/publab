@@ -13,12 +13,12 @@ Nada publicado até aqui. Decidido em revisão (03/10/2026):
 - **README:** diz `Powered by: Kof` com link, status por fase, e o aviso de
   modelo educacional do 8051/Cortex-M3 em EN e PT.
 
-## Pendente — bloqueia o push
+## Pendente
 
-- [ ] **LICENSE.** Ainda não escolhida. O projeto não tem arquivo de licença.
-      O Kof ser GPLv3 não decide a licença do PubLab (o PubLab usa a toolchain,
-      não vendoriza o compilador).
-- [ ] **Confirmar o destino do link do `Powered by: Kof`.**
-      Hoje: `https://github.com/KofLang/Kof4j` (repositório oficial).
-      Alternativa: `https://koflang.github.io/` (site do projeto).
+- [x] **LICENSE: MIT.** Decidido em 04/10/2026. Arquivo `LICENSE` na raiz,
+      copyright "2026 Publio Santos". O Kof ser GPLv3 não decide a licença do
+      PubLab — o PubLab usa a toolchain, não vendoriza o compilador.
+- [x] **Link do `Powered by: Kof`: `https://github.com/KofLang/Kof4j`.**
+      Decidido em 04/10/2026 — o repositório, não o site. Vive só em
+      `publab/app/Brand.kf`.
 - [ ] Autorização explícita para publicar.

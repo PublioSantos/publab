@@ -66,8 +66,8 @@ unless it is covered by the test suite.
 |---|---|---|
 | 1 | PubVM core — registers, memory, flags, ALU, execution engine | **done** |
 | 2 | PubASM — lexer, parser, labels, diagnostics, assembler | **done** |
-| 3 | PubVM-16 (same core, wider word) | not started |
-| 4 | PubVM-32 (same core, wider word) | not started |
+| 3 | PubVM-16 (same core, wider word) | **done** |
+| 4 | PubVM-32 (same core, wider word) | **done** |
 | 5 | Minimal UI | not started |
 | 6 | Debugger | not started |
 | 7 | Educational layer | not started |
@@ -77,9 +77,11 @@ unless it is covered by the test suite.
 | 11 | Architecture comparison | not started |
 | 12 | Export | not started |
 
-The machine core is **parameterized by word size** from the start: PubVM-8, -16
-and -32 are one implementation configured differently, never three copies.
-Phases 1-2 expose and validate the 8-bit configuration only.
+The machine core is **parameterized by word size**: PubVM-8, -16 and -32 are
+one implementation configured differently, never three copies. All three are
+validated end to end — `tests/matrix_test.kf` runs the whole Basic Mode
+instruction set, the encoding, immediates, memory, PC, labels, branches and
+all four flags over every variant, from identical PubASM source.
 
 There is **no user interface yet**. The machine is driven from the test suite
 and from Kof code.
@@ -106,6 +108,10 @@ Requires the Kof toolchain (built against 0.5.0-beta):
 ```bash
 kof test tests
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
 
 ## Documentation
 

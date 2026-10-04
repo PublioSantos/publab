@@ -40,7 +40,14 @@ target (useful as a loop exit).
 
 A negative immediate is stored in two's complement: on PubVM-8, `-6` becomes
 `250`. An immediate is accepted when it fits the machine's word either as an
-unsigned or as a signed value — on 8 bits, `-128` to `255`.
+unsigned or as a signed value — on 8 bits, `-128` to `255`; on 16 bits,
+`-32768` to `65535`; on 32 bits, `-2147483648` to `4294967295`.
+
+A value outside the machine's word is `ASM005`, which names the word and the
+valid range. Only a literal beyond `999999999999` — far above any variant's
+word — is rejected earlier, by the lexer, as `ASM011`; that limit exists so
+the accumulator cannot overflow silently, and it is deliberately high enough
+that the word check owns every realistic mistake.
 
 ## Operands
 

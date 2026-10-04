@@ -12,9 +12,10 @@ import publab.assembler
 //   PRINT A
 //   HALT
 //
-// Phases 1-2 implement and validate PubVM-8. The 16- and 32-bit expectations
-// of section 18 belong to phases 3-4, when the suite is run across all three
-// word sizes; the core is already parameterized for it (see MachineConfig).
+// This file drives the 8-bit variant in depth, including the before/after of
+// section 48. The same program on all three variants — the full section 18
+// table — is in tests/matrix_test.kf, along with the rest of the
+// cross-word-size conformance suite.
 
 String goldenSource() {
     return "LOAD A, 250\nLOAD B, 20\nADD A, B\nPRINT A\nHALT\n"

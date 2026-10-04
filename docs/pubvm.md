@@ -4,13 +4,23 @@
 
 PubVM is the educational virtual machine built for PubLab. There is **one**
 implementation; PubVM-8, PubVM-16 and PubVM-32 are that implementation with a
-different `wordSize`. Phases 1-2 expose and validate the 8-bit configuration.
+different `wordSize`. All three are implemented and validated: the conformance
+suite in `tests/matrix_test.kf` runs over every variant returned by
+`allMachines()`.
 
 ```kof
 record MachineConfig(String name, Int wordSize, Int memorySize, Int addressBits, Int entryPoint)
 
-MachineConfig pubvm8() { return MachineConfig("PubVM-8", 8, 65536, 16, 0) }
+MachineConfig pubvm8()  { return MachineConfig("PubVM-8",  8,  65536, 16, 0) }
+MachineConfig pubvm16() { return MachineConfig("PubVM-16", 16, 65536, 16, 0) }
+MachineConfig pubvm32() { return MachineConfig("PubVM-32", 32, 65536, 16, 0) }
+
+List<MachineConfig> allMachines()   // the three, in order
 ```
+
+Memory size and address size are **the same on all three**: only the word
+changes. A wider word does not mean more memory — it means each value takes
+more of the memory that is already there.
 
 ## Word
 
@@ -176,8 +186,16 @@ the low bits select the operand form, which keeps a memory dump readable.
 | `0x60` | `PRINT reg` | `op reg` | 2 |
 
 Immediates and addresses are little-endian. Immediate width follows the word
-size, so **the same source produces a different image on PubVM-8 and
-PubVM-16** — which is part of what the laboratory is meant to show.
+size, so **the same source produces a different image on each variant** —
+which is part of what the laboratory is meant to show. The conformance program
+of the test suite assembles to 63 bytes on PubVM-8, 72 on PubVM-16 and 90 on
+PubVM-32, from identical source.
+
+A practical consequence worth teaching: because the program is longer on a
+wider machine, a data address that is free on PubVM-8 can land **inside the
+program's own code** on PubVM-32. Nothing stops a `STORE` from overwriting
+code — that is what a real machine does too — so examples place their data
+clear of the longest image.
 
 `Opcodes.kf` holds this table once; the assembler encodes from it and the
 engine decodes from it, so the two cannot disagree.

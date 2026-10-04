@@ -1,0 +1,395 @@
+package tests
+
+import publab.machine
+import publab.assembler
+
+// Phases 3-4: the conformance suite. Every test here runs over ALL THREE
+// variants returned by `allMachines()`, so nothing passes because it happened
+// to be written for 8 bits. Expected values are derived from the variant's
+// word size, never hard-coded per machine — except where a literal is the
+// point of the test.
+
+Machine machineFor(String source, MachineConfig config) {
+    val assembled = assembleSource(source, config)
+    assert(assembled.ok(), config.name() + ": " + renderDiagnostics(assembled.diagnostics(), "en"))
+    var machine = Machine(config)
+    machine.load(assembled.image())
+    return machine
+}
+
+Machine ranOn(String source, MachineConfig config) {
+    var machine = machineFor(source, config)
+    machine.run(500)
+    assert(statusName(machine.status) == "HALTED",
+        config.name() + ": expected HALTED, got " + statusName(machine.status)
+            + " " + machine.errorMessage)
+    return machine
+}
+
+String joinOut(List<String> output) {
+    var out = ""
+    for (var line in output) {
+        if (out.length > 0) { out = out + "," }
+        out = out + line
+    }
+    return out
+}
+
+// Exercises every instruction of the Basic Mode set, in every operand form,
+// including a taken JZ, a taken JC and an unconditional JMP. The only
+// word-dependent result is the NOT.
+//
+// The data address is 0x80 on purpose: this program assembles to 63 bytes on
+// PubVM-8 but 90 on PubVM-32, because every immediate is wider, so a data
+// address of 0x40 would have the STORE overwrite the program's own code on
+// the wider variants. The first run of this suite caught exactly that.
+String conformanceSource() {
+    return "    LOAD A, 10\n"
+        + "    LOAD B, A\n"
+        + "    ADD A, 5\n"
+        + "    SUB A, B\n"
+        + "    AND A, 3\n"
+        + "    OR A, 6\n"
+        + "    XOR A, 2\n"
+        + "    STORE [128], A\n"
+        + "    LOAD C, [128]\n"
+        + "    PRINT C\n"
+        + "    NOT A\n"
+        + "    PRINT A\n"
+        + "    LOAD D, 0\n"
+        + "    SUB D, 0\n"
+        + "    JZ zero_ok\n"
+        + "    PRINT D\n"
+        + "zero_ok:\n"
+        + "    LOAD D, 1\n"
+        + "    SUB D, 2\n"
+        + "    JC carry_ok\n"
+        + "    PRINT D\n"
+        + "carry_ok:\n"
+        + "    JMP done\n"
+        + "    PRINT D\n"
+        + "done:\n"
+        + "    HALT\n"
+}
+
+test "the three variants are one core, configured" {
+    assert(allMachines().size == 3)
+    assert(allMachines().get(0).name() == "PubVM-8" && allMachines().get(0).wordSize() == 8)
+    assert(allMachines().get(1).name() == "PubVM-16" && allMachines().get(1).wordSize() == 16)
+    assert(allMachines().get(2).name() == "PubVM-32" && allMachines().get(2).wordSize() == 32)
+    for (var config in allMachines()) {
+        assert(config.memorySize() == 65536, "memory is independent of the word")
+        assert(config.addressBits() == 16, "so is the address size")
+    }
+}
+
+test "GOLDEN: the section 18 table, on all three variants" {
+    val source = "LOAD A, 250\nLOAD B, 20\nADD A, B\nPRINT A\nHALT\n"
+
+    var eight = ranOn(source, pubvm8())
+    assert(eight.registers.read(0) == 14 as Long, "PubVM-8: A = 14")
+    assert(eight.flags.carry, "PubVM-8: C = 1")
+    assert(eight.flags.zero == false, "PubVM-8: Z = 0")
+    assert(eight.output.get(0) == "14")
+
+    var sixteen = ranOn(source, pubvm16())
+    assert(sixteen.registers.read(0) == 270 as Long, "PubVM-16: A = 270")
+    assert(sixteen.flags.carry == false, "PubVM-16: C = 0")
+    assert(sixteen.flags.zero == false, "PubVM-16: Z = 0")
+    assert(sixteen.output.get(0) == "270")
+
+    var thirtyTwo = ranOn(source, pubvm32())
+    assert(thirtyTwo.registers.read(0) == 270 as Long, "PubVM-32: A = 270")
+    assert(thirtyTwo.flags.carry == false, "PubVM-32: C = 0")
+    assert(thirtyTwo.flags.zero == false, "PubVM-32: Z = 0")
+    assert(thirtyTwo.output.get(0) == "270")
+
+    // N and O are 0 on every variant for this program.
+    for (var config in allMachines()) {
+        var m = ranOn(source, config)
+        assert(m.flags.negative == false, config.name() + ": N = 0")
+        assert(m.flags.overflow == false, config.name() + ": O = 0")
+        assert(m.registers.read(1) == 20 as Long, config.name() + ": B = 20")
+        assert(m.cycles == 5, config.name() + ": five instructions")
+    }
+}
+
+test "the full Basic Mode set runs end to end on every variant" {
+    for (var config in allMachines()) {
+        val ws = config.wordSize()
+        var m = ranOn(conformanceSource(), config)
+        val mask = wordMask(ws)
+        val name = config.name()
+
+        // LOAD imm, LOAD reg, ADD, SUB, AND, OR, XOR all ran on small values,
+        // so the result is the same on every variant.
+        assert(m.registers.read(2) == 5 as Long, name + ": C came back from memory as 5")
+        assert(m.registers.read(1) == 10 as Long, name + ": B = 10")
+        // NOT is word-dependent: the complement of 5 inside this word.
+        assert(m.registers.read(0) == mask - (5 as Long), name + ": A = NOT 5")
+        // The last flag-setting instruction was SUB D, 1 - 2.
+        assert(m.registers.read(3) == mask, name + ": D = 1 - 2 wrapped")
+        assert(m.flags.carry, name + ": borrow set C")
+        assert(m.flags.negative, name + ": the sign bit of the result")
+        assert(m.flags.zero == false, name + ": Z = 0")
+        assert(m.flags.overflow == false, name + ": O = 0")
+        // Both PRINTs after a taken branch were skipped; the two that ran are
+        // the memory round-trip and the NOT.
+        assert(joinOut(m.output) == "5," + (mask - (5 as Long)), name + ": output")
+        assert(m.cycles == 20, name + ": twenty instructions executed")
+        assert(m.memory.readByte(128) == 5, name + ": the STORE really reached memory")
+    }
+}
+
+test "the encoded program size follows the word size" {
+    // The conformance program has 9 register/immediate instructions, so each
+    // extra immediate byte adds 9 bytes to the image.
+    for (var config in allMachines()) {
+        val assembled = assembleSource(conformanceSource(), config)
+        assert(assembled.ok())
+        assert(assembled.byteCount() == 9 * (2 + wordBytes(config.wordSize())) + 36,
+            config.name() + ": " + assembled.byteCount() + " bytes")
+    }
+    assert(assembleSource(conformanceSource(), pubvm8()).byteCount() == 63)
+    assert(assembleSource(conformanceSource(), pubvm16()).byteCount() == 72)
+    assert(assembleSource(conformanceSource(), pubvm32()).byteCount() == 90)
+}
+
+test "an immediate is encoded little-endian at the variant's width" {
+    val source = "LOAD A, 258\nHALT\n"
+    val eight = assembleSource(source, pubvm8())
+    assert(eight.ok() == false, "258 does not fit in an 8-bit word")
+
+    val sixteen = assembleSource(source, pubvm16())
+    assert(sixteen.ok())
+    assert(sixteen.image().get(0) == 0x10 && sixteen.image().get(1) == 0x00)
+    assert(sixteen.image().get(2) == 2 && sixteen.image().get(3) == 1, "258 = 0x0102")
+    assert(sixteen.byteCount() == 5)
+
+    val thirtyTwo = assembleSource(source, pubvm32())
+    assert(thirtyTwo.ok())
+    assert(thirtyTwo.image().get(2) == 2 && thirtyTwo.image().get(3) == 1)
+    assert(thirtyTwo.image().get(4) == 0 && thirtyTwo.image().get(5) == 0, "zero-extended")
+    assert(thirtyTwo.byteCount() == 7)
+}
+
+test "labels resolve from real instruction sizes, so they move per variant" {
+    val source = "LOAD A, 3\nloop:\nSUB A, 1\nJZ done\nJMP loop\ndone:\nHALT\n"
+    // LOAD A,3 is 2+W bytes, so `loop` sits at a different address on each
+    // variant, and `done` after it.
+    for (var config in allMachines()) {
+        val w = wordBytes(config.wordSize())
+        val assembled = assembleSource(source, config)
+        assert(assembled.ok())
+        assert(findSymbol(assembled.symbols(), "loop").address() == 2 + w,
+            config.name() + ": loop")
+        // loop: SUB A,1 (2+w) then JZ (3) then JMP (3)
+        assert(findSymbol(assembled.symbols(), "done").address() == 2 + w + (2 + w) + 3 + 3,
+            config.name() + ": done")
+        // And the branch really jumps there.
+        var m = ranOn(source, config)
+        assert(m.registers.read(0) == 0 as Long, config.name() + ": counted down to zero")
+        assert(m.flags.zero, config.name() + ": Z set on the exit")
+    }
+}
+
+test "PC always lands on an instruction boundary, on every variant" {
+    for (var config in allMachines()) {
+        val assembled = assembleSource(conformanceSource(), config)
+        assert(assembled.ok())
+        var machine = Machine(config)
+        machine.load(assembled.image())
+        var steps = 0
+        while (machine.canRun() && steps < 500) {
+            assert(lineForAddress(assembled.sourceMap(), machine.pc).found(),
+                config.name() + ": PC " + machine.pc + " is not an instruction address")
+            if (!machine.step()) { steps = 500 } else { steps = steps + 1 }
+        }
+        assert(statusName(machine.status) == "HALTED", config.name())
+        assert(lineForAddress(assembled.sourceMap(), machine.pc).found(),
+            config.name() + ": PC rests on the HALT")
+    }
+}
+
+test "a word occupies exactly wordBytes memory cells, on every variant" {
+    for (var config in allMachines()) {
+        val ws = config.wordSize()
+        val source = "LOAD A, " + wordMaxUnsigned(ws) + "\nSTORE [64], A\nLOAD B, [64]\nHALT\n"
+        var m = ranOn(source, config)
+        var i = 0
+        while (i < wordBytes(ws)) {
+            assert(m.memory.readByte(64 + i) == 255,
+                config.name() + ": cell " + (64 + i) + " holds FF")
+            i = i + 1
+        }
+        assert(m.memory.readByte(64 + wordBytes(ws)) == 0,
+            config.name() + ": the cell past the word is untouched")
+        assert(m.registers.read(1) == wordMaxUnsigned(ws), config.name() + ": read back whole")
+    }
+}
+
+test "carry at the unsigned maximum, on every variant" {
+    for (var config in allMachines()) {
+        val ws = config.wordSize()
+        val source = "LOAD A, " + wordMaxUnsigned(ws) + "\nADD A, 1\nPRINT A\nHALT\n"
+        var m = ranOn(source, config)
+        assert(m.registers.read(0) == 0 as Long, config.name() + ": wrapped to 0")
+        assert(m.flags.carry, config.name() + ": C = 1")
+        assert(m.flags.zero, config.name() + ": Z = 1")
+        assert(m.flags.negative == false, config.name() + ": N = 0")
+        assert(m.flags.overflow == false, config.name() + ": O = 0 (unsigned wrap)")
+        assert(m.output.get(0) == "0")
+    }
+}
+
+test "signed overflow at the signed maximum, on every variant" {
+    for (var config in allMachines()) {
+        val ws = config.wordSize()
+        val source = "LOAD A, " + wordMaxSigned(ws) + "\nADD A, 1\nHALT\n"
+        var m = ranOn(source, config)
+        assert(m.registers.read(0) == wordSignBit(ws), config.name() + ": became the sign bit")
+        assert(m.flags.overflow, config.name() + ": O = 1")
+        assert(m.flags.negative, config.name() + ": N = 1")
+        assert(m.flags.carry == false, config.name() + ": C = 0, it fit in the word")
+        assert(m.flags.zero == false, config.name() + ": Z = 0")
+        assert(wordToSigned(m.registers.read(0), ws) == wordMinSigned(ws),
+            config.name() + ": read as signed, it is the most negative value")
+    }
+}
+
+test "zero and negative flags, on every variant" {
+    for (var config in allMachines()) {
+        val ws = config.wordSize()
+        var zero = ranOn("LOAD A, 5\nSUB A, 5\nHALT\n", config)
+        assert(zero.registers.read(0) == 0 as Long && zero.flags.zero, config.name() + ": Z")
+        assert(zero.flags.negative == false && zero.flags.carry == false, config.name())
+
+        var negative = ranOn("LOAD A, 0\nSUB A, 1\nHALT\n", config)
+        assert(negative.registers.read(0) == wordMask(ws), config.name() + ": 0 - 1 = mask")
+        assert(negative.flags.negative, config.name() + ": N = 1")
+        assert(negative.flags.carry, config.name() + ": borrow")
+        assert(negative.flags.zero == false, config.name())
+    }
+}
+
+test "NOT produces the variant's own mask" {
+    for (var config in allMachines()) {
+        val ws = config.wordSize()
+        var m = ranOn("LOAD A, 0\nNOT A\nPRINT A\nHALT\n", config)
+        assert(m.registers.read(0) == wordMask(ws), config.name() + ": NOT 0 = mask")
+        assert(m.output.get(0) == "" + wordMask(ws), config.name() + ": printed the mask")
+        assert(m.flags.negative, config.name() + ": the mask has its sign bit set")
+        assert(m.flags.carry == false && m.flags.overflow == false,
+            config.name() + ": a logic instruction clears C and O")
+    }
+}
+
+test "immediate range validation follows the word size" {
+    for (var config in allMachines()) {
+        val ws = config.wordSize()
+        // One past the unsigned maximum is rejected on every variant, by the
+        // WORD check and not by the lexer.
+        val tooBig = assembleSource("LOAD A, " + (wordMaxUnsigned(ws) + (1 as Long)) + "\nHALT\n", config)
+        assert(tooBig.ok() == false, config.name() + ": max + 1 must be rejected")
+        assert(tooBig.diagnostics().get(0).code() == "ASM005", config.name() + ": as a range error")
+        assert(renderDiagnostic(tooBig.diagnostics().get(0), "en").contains("" + ws + "-bit word"))
+
+        // One past the signed minimum, likewise.
+        val tooSmall = assembleSource("LOAD A, " + (wordMinSigned(ws) - (1 as Long)) + "\nHALT\n", config)
+        assert(tooSmall.ok() == false, config.name() + ": min - 1 must be rejected")
+
+        // The edges themselves are accepted.
+        assert(assembleSource("LOAD A, " + wordMaxUnsigned(ws) + "\nHALT\n", config).ok(),
+            config.name() + ": the unsigned maximum fits")
+        assert(assembleSource("LOAD A, " + wordMinSigned(ws) + "\nHALT\n", config).ok(),
+            config.name() + ": the signed minimum fits")
+    }
+    // The same literal, accepted or rejected depending on the machine.
+    assert(assembleSource("LOAD A, 300\nHALT\n", pubvm8()).ok() == false)
+    assert(assembleSource("LOAD A, 300\nHALT\n", pubvm16()).ok())
+    assert(assembleSource("LOAD A, 70000\nHALT\n", pubvm16()).ok() == false)
+    assert(assembleSource("LOAD A, 70000\nHALT\n", pubvm32()).ok())
+}
+
+test "a negative immediate is two's complement at the variant's width" {
+    for (var config in allMachines()) {
+        val ws = config.wordSize()
+        var m = ranOn("LOAD A, -6\nPRINT A\nHALT\n", config)
+        assert(m.registers.read(0) == wordMask(ws) - (5 as Long), config.name() + ": -6 stored")
+        assert(wordToSigned(m.registers.read(0), ws) == (0 as Long) - (6 as Long),
+            config.name() + ": reads back as -6")
+    }
+}
+
+test "reset restores every variant and the program runs again identically" {
+    for (var config in allMachines()) {
+        var m = ranOn(conformanceSource(), config)
+        val firstOutput = joinOut(m.output)
+        val firstCycles = m.cycles
+        m.reset()
+        assert(statusName(m.status) == "READY", config.name())
+        assert(m.pc == 0 && m.cycles == 0, config.name())
+        assert(m.registers.read(0) == 0 as Long, config.name())
+        assert(m.output.size == 0, config.name())
+        assert(m.memory.readByte(128) == 0, config.name() + ": the STORE was undone")
+        m.run(500)
+        assert(statusName(m.status) == "HALTED", config.name())
+        assert(joinOut(m.output) == firstOutput, config.name() + ": same output")
+        assert(m.cycles == firstCycles, config.name() + ": same cycle count")
+    }
+}
+
+test "the register values a laboratory shows, per variant" {
+    val source = "LOAD A, 250\nLOAD B, 20\nADD A, B\nHALT\n"
+    var eight = ranOn(source, pubvm8())
+    assert(wordToHex(eight.registers.read(0), 8) == "0E")
+    assert(wordToBin(eight.registers.read(0), 8) == "00001110")
+    var sixteen = ranOn(source, pubvm16())
+    assert(wordToHex(sixteen.registers.read(0), 16) == "010E")
+    assert(wordToBin(sixteen.registers.read(0), 16) == "0000000100001110")
+    var thirtyTwo = ranOn(source, pubvm32())
+    assert(wordToHex(thirtyTwo.registers.read(0), 32) == "0000010E")
+    assert(wordToBin(thirtyTwo.registers.read(0), 32).length == 32)
+}
+
+test "the snapshot reports the right machine on every variant" {
+    for (var config in allMachines()) {
+        var m = ranOn(conformanceSource(), config)
+        val state = m.snapshot()
+        assert(state.machineName() == config.name())
+        assert(state.wordSize() == config.wordSize())
+        assert(state.addressBits() == 16)
+        assert(state.registerNames().size == 4 && state.registers().size == 4)
+        assert(statusName(state.status()) == "HALTED")
+        assert(state.currentInstruction() == "HALT")
+        assert(state.cycles() == 20)
+    }
+}
+
+test "every instruction of the set decodes back on every variant" {
+    // Data at 0x80, clear of the program on every variant: this one is 43
+    // bytes on PubVM-32, so an address of 40 would be inside its own code.
+    val source = "LOAD A, 5\nLOAD B, A\nLOAD C, [0x80]\nSTORE [0x80], D\nADD A, B\nSUB A, 1\n"
+        + "AND A, B\nOR A, B\nXOR A, B\nNOT A\nPRINT A\nJMP done\ndone:\nHALT\n"
+    for (var config in allMachines()) {
+        val assembled = assembleSource(source, config)
+        assert(assembled.ok(), config.name())
+        var machine = Machine(config)
+        machine.load(assembled.image())
+        var expected = listOf("LOAD A, 5", "LOAD B, A", "LOAD C, [0x0080]", "STORE [0x0080], D",
+            "ADD A, B", "SUB A, 1", "AND A, B", "OR A, B", "XOR A, B", "NOT A", "PRINT A")
+        var i = 0
+        while (i < expected.size) {
+            assert(machine.currentInstructionText() == expected.get(i),
+                config.name() + ": expected " + expected.get(i) + ", memory holds "
+                    + machine.currentInstructionText())
+            assert(machine.step(), config.name() + ": step " + i)
+            i = i + 1
+        }
+        // The JMP's target address differs per variant, so check the mnemonic
+        // and that it really lands on the HALT.
+        assert(machine.currentInstructionText().startsWith("JMP 0x"), config.name())
+        assert(machine.step(), config.name() + ": the JMP")
+        assert(machine.currentInstructionText() == "HALT", config.name())
+    }
+}

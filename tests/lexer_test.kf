@@ -70,9 +70,12 @@ test "a malformed number is reported with its position" {
 }
 
 test "a number too large to represent is rejected, not wrapped" {
-    val r = lexSource("LOAD A, 99999999999")
+    val r = lexSource("LOAD A, 99999999999999")
     assert(r.diagnostics().size == 1)
     assert(r.diagnostics().get(0).code() == "ASM011")
+    // Just above a 32-bit word is lexable on purpose, so the word-size check
+    // owns the error instead of the lexer.
+    assert(lexSource("LOAD A, 4294967296").diagnostics().size == 0)
 }
 
 test "an unexpected character is reported" {
