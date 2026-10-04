@@ -9,6 +9,12 @@ test "the product identity" {
     assert(taglineIn("pt") == "Laboratório Interativo de Arquitetura de Computadores")
 }
 
+test "the slogan is translated, and the repository link sits in the footer" {
+    assert(sloganIn("en") == "See the machine.")
+    assert(sloganIn("pt") == "Veja a máquina.")
+    assert(repositoryUrl() == "https://github.com/PublioSantos/publab")
+}
+
 test "the Kof attribution shown on screen" {
     assert(poweredByLabel() == "Powered by: Kof")
     assert(poweredByName() == "Kof")

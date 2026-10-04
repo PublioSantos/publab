@@ -69,8 +69,10 @@ PubLab
 │   ├── PubVM-8
 │   ├── PubVM-16
 │   └── PubVM-32
-├── 8051          historical architecture      (educational model, planned)
-└── Cortex-M3     modern ARM architecture      (educational model, planned)
+├── 8051          historical architecture      (educational model + P0 port)
+├── Cortex-M3     modern ARM architecture      (educational model + GPIOA port)
+├── Comparison    the three machines, Step-synchronized
+└── Export        a session export — never a hardware binary
 ```
 
 ## Running it locally
@@ -114,19 +116,19 @@ below is enforced by the test suite.
 
 | Phase | Area | Status |
 |---|---|---|
-| 1 | PubVM core — registers, memory, flags, ALU, execution engine | **done** |
-| 2 | PubASM — lexer, parser, labels, diagnostics, assembler | **done** |
-| 3 | PubVM-16 (same core, wider word) | **done** |
-| 4 | PubVM-32 (same core, wider word) | **done** |
-| 5A | JS-target parity for the core | **done** |
-| 5B | Minimal UI | **done** |
-| 6 | Debugger | **done** |
-| 7 | Educational layer | **done** |
-| 8 | Advanced Mode — X, Y, SP, FP, stack, shifts, extra jumps | **done** |
-| 9 | 8051 educational model | stages A-B done (core + assembler + P0, no UI yet) |
-| 10 | Cortex-M3 educational model | stages A-B done (core + assembler + GPIOA, no UI yet) |
-| 11 | Architecture comparison | stages A-B done (8051/Cortex-M3 UI tabs + comparison view) |
-| 12 | Export | stage A done (session export, not a hardware binary) |
+| 1 | PubVM core — registers, memory, flags, ALU, execution engine | **Stage A — done** |
+| 2 | PubASM — lexer, parser, labels, diagnostics, assembler | **Stage A — done** |
+| 3 | PubVM-16 (same core, wider word) | **Stage A — done** |
+| 4 | PubVM-32 (same core, wider word) | **Stage A — done** |
+| 5A | JS-target parity for the core | **Stage A — done** |
+| 5B | Minimal UI | **Stage A — done** |
+| 6 | Debugger | **Stage A — done** |
+| 7 | Educational layer | **Stage A — done** |
+| 8 | Advanced Mode — X, Y, SP, FP, stack, shifts, extra jumps | **Stage A — done** (built in three sub-steps) |
+| 9 | 8051 educational model — core, assembler, P0 port | **Stage A — done** (plus stage B: the P0 port) |
+| 10 | Cortex-M3 educational model — core, assembler, GPIOA port | **Stage A — done** (plus stage B: the GPIOA port) |
+| 11 | Architecture comparison — 8051/Cortex-M3 tabs, comparison view | **Stage A — done** (plus stage B: the comparison view) |
+| 12 | Export — session export, never a hardware binary | **Stage A — done** |
 
 One absence in phases 1-8 is deliberate rather than pending: there is no
 **Pause** button, because Kof's JS UI runtime has no timer, so a run cannot
@@ -134,10 +136,10 @@ be interrupted by a click while it is executing. What exists instead is
 real: `Run` is bounded by a cycle budget, reports honestly when it did not
 finish, and continues right where it left off on the next click.
 
-## Two more architectures are coming — 8051 and Cortex-M3
+## Three architectures — what they are, and what they are not
 
-Phases 9 and 10 will add two more educational models, and it matters to be
-upfront about what that will and will not be:
+The 8051 and Cortex-M3 modules sit next to PubVM, each in its own tab, and
+it matters to be upfront about what they are:
 
 - PubLab is **not** an emulator and **not** a development tool for real 8051
   or ARM Cortex-M3 hardware. A program that runs in PubLab is **not**
@@ -145,24 +147,27 @@ upfront about what that will and will not be:
   reference for firmware, certification, timing analysis or any production
   decision.
 - Only an explicitly documented subset of each architecture's instructions
-  and peripherals will be modelled, chosen for what it teaches. Anything
-  outside that subset will be absent, not approximated — and wherever a real
-  register name or address is used, the specific MCU will be named. PubLab
-  will not invent peripheral addresses, registers or behaviours and present
-  them as real hardware.
+  and peripherals is modelled, chosen for what it teaches. Anything outside
+  that subset is absent, not approximated. PubLab does not invent peripheral
+  addresses, registers or behaviours and present them as real hardware.
+- The opcode encodings are PubLab's own, chosen for teaching — which is why
+  the Export button produces a labelled session record, never a binary for a
+  real chip.
 
 For real work on those architectures, use the manufacturer's documentation
-and toolchain. Neither module is implemented yet — see
-[docs/8051.md](docs/8051.md) and [docs/cortex-m3.md](docs/cortex-m3.md) for
-what is planned.
+and toolchain. [docs/8051.md](docs/8051.md) and
+[docs/cortex-m3.md](docs/cortex-m3.md) mark every register, flag and
+instruction as real or as an educational simplification.
 
 ## Attribution on screen
 
-PubLab displays **Powered by: Kof** in the footer of the window, as a plain
-line linking to <https://github.com/KofLang/Kof4j> — no styling applied to it.
+PubLab displays **Powered by: Kof** in the footer of the window, linking to
+<https://github.com/KofLang/Kof4j>, and next to it a link to this repository,
+<https://github.com/PublioSantos/publab>.
 
 The text and the URL live in `publab/app/Brand.kf` as the single source the
-interface reads — `poweredByLabel()` and `poweredByUrl()` — rather than as a
+interface reads — `poweredByLabel()`/`poweredByUrl()` and
+`repositoryLabel()`/`repositoryUrl()` — rather than as a
 string the UI could forget or let drift. Covered by `tests/brand_test.kf`.
 
 ## License
@@ -174,12 +179,11 @@ MIT — see [LICENSE](LICENSE).
 - [docs/architecture.md](docs/architecture.md) — layers and how they are kept apart
 - [docs/pubvm.md](docs/pubvm.md) — the machine: registers, flags, memory, encoding
 - [docs/pubasm.md](docs/pubasm.md) — the language: syntax, instructions, diagnostics
-- [docs/8051.md](docs/8051.md) — educational model (not implemented)
-- [docs/cortex-m3.md](docs/cortex-m3.md) — educational model (not implemented)
+- [docs/8051.md](docs/8051.md) — the 8051 educational model, real vs. simplified, item by item
+- [docs/cortex-m3.md](docs/cortex-m3.md) — the Cortex-M3 educational model, real vs. simplified
+- [docs/architecture-comparison.md](docs/architecture-comparison.md) — the tabs and the comparison view
+- [docs/export.md](docs/export.md) — what the session export is, and why it is not a hardware binary
 - [examples/](examples/) — programs that really run, with comments in English and Portuguese
-
-The teaching documentation of section 38 of the specification (what a CPU is,
-what a register is, what overflow is) arrives with phases 9-10.
 
 ## Targets
 

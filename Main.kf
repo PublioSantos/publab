@@ -474,11 +474,31 @@ Style rootStyleFor(Bool visible) {
     return Style("background: #12151F; color: #E6E6F2; padding: 16; border-radius: 8; display: none")
 }
 
+// A thin full-width line. Hr() collapses to a centred dot inside the
+// runtime's flex Column, so the separator is a 1px-tall View instead.
+View divider() {
+    return View(Style("height: 1; width: 100%; background: #2A3045; margin-top: 8; margin-bottom: 8"))
+}
+
+// The active tab's button is filled with the accent colour; the others stay
+// plain. Each style carries every property it needs, since setStyle
+// replaces a node's inline style wholesale (see rootStyleFor above).
+Style navStyleFor(Bool active) {
+    if (active) {
+        return Style("background: #7DD3FC; color: #12151F; font-weight: 700; border-radius: 6")
+    }
+    return Style("background: #1A1E2E; color: #E6E6F2; border-radius: 6")
+}
+
 void refreshTabVisibility() {
     Ui.pubvmShell.setStyle(rootStyleFor(Ui.activeTab == "pubvm"))
     Ui.lab8051Shell.setStyle(rootStyleFor(Ui.activeTab == "8051"))
     Ui.labM3Shell.setStyle(rootStyleFor(Ui.activeTab == "m3"))
     Ui.compareShell.setStyle(rootStyleFor(Ui.activeTab == "compare"))
+    Ui.navPubvmButton.setStyle(navStyleFor(Ui.activeTab == "pubvm"))
+    Ui.nav8051Button.setStyle(navStyleFor(Ui.activeTab == "8051"))
+    Ui.navM3Button.setStyle(navStyleFor(Ui.activeTab == "m3"))
+    Ui.navCompareButton.setStyle(navStyleFor(Ui.activeTab == "compare"))
 }
 
 void onNavPubvm() {
@@ -512,7 +532,7 @@ void relabelNav(String language) {
 // Re-applied when the language changes.
 void relabel() {
     val language = labLanguage()
-    Ui.slogan.text = taglineIn(language) + "  ·  " + productSlogan()
+    Ui.slogan.text = taglineIn(language) + "  ·  " + sloganIn(language)
     Ui.sourceTitle.text = sourceTitle(language)
     Ui.registersTitle.text = registersTitle(language)
     Ui.flagsTitle.text = flagsTitle(language)
@@ -631,8 +651,16 @@ main() {
     // style never reaches the runtime's registry, so it is a SILENT no-op —
     // see notes/kof-compiler-findings.md, D-4. Do not inline it back.
     val footer = Style("color: #ffffff; text-decoration: none")
+    // The runtime sizes a Textarea to two lines regardless of setRows, so
+    // the editors get an explicit height (through a val, per D-4 above).
+    val editorStyle = Style("min-height: 240; width: 100%; font-family: monospace; font-size: 13")
     var poweredBy = Link(poweredByLabel(), poweredByUrl())
     poweredBy.setStyle(footer)
+    var repository = Link(repositoryLabel(), repositoryUrl())
+    repository.setStyle(footer)
+    var footerSeparator = Label("·")
+    footerSeparator.color = dimColor()
+    var footerRow = Row(listOf(poweredBy, footerSeparator, repository))
 
     // --- selectors: machine, example, language ---
     Ui.machineTitle = sectionTitle(Label(""))
@@ -658,6 +686,7 @@ main() {
     Ui.editor = Textarea(labDefaultSource())
     Ui.editor.setRows(16)
     Ui.editor.setId("pubasm-source")
+    Ui.editor.setStyle(editorStyle)
 
     // --- controls ---
     Ui.assembleButton = Button("", () -> onAssemble())
@@ -777,6 +806,7 @@ main() {
     Ui.editor8051 = Textarea(lab8051DefaultSource())
     Ui.editor8051.setRows(10)
     Ui.editor8051.setId("i8051-source")
+    Ui.editor8051.setStyle(editorStyle)
 
     Ui.assemble8051Button = Button("", () -> on8051Assemble())
     Ui.reset8051Button = Button("", () -> on8051Reset())
@@ -846,6 +876,7 @@ main() {
     Ui.editorM3 = Textarea(labM3DefaultSource())
     Ui.editorM3.setRows(10)
     Ui.editorM3.setId("cm3-source")
+    Ui.editorM3.setStyle(editorStyle)
 
     Ui.assembleM3Button = Button("", () -> onM3Assemble())
     Ui.resetM3Button = Button("", () -> onM3Reset())
@@ -986,8 +1017,8 @@ main() {
     // tab shell, the same way the 8051/Cortex-M3/comparison sections already
     // do — see the "tab switching" note on Ui.activeTab above for why.
     var pubvmBody = Column(listOf(
-        Ui.sourceTitle, Ui.editor, controls, Ui.message, Hr(),
-        Ui.machineSummary, Ui.status, Ui.current, Ui.sourceLine, Hr(),
+        Ui.sourceTitle, Ui.editor, controls, Ui.message, divider(),
+        Ui.machineSummary, Ui.status, Ui.current, Ui.sourceLine, divider(),
         Row(listOf(registersPanel, flagsPanel)),
         explainPanel, changesPanel, memoryPanel, stackPanel,
         outputPanel, diagnosticsPanel, exportPanelView))
@@ -1003,9 +1034,9 @@ main() {
         Ui.navM3Button, Ui.navCompareButton))
 
     // --- compose ---
-    var body = Column(listOf(header, Hr(), selectors, Hr(), nav, Hr(),
+    var body = Column(listOf(header, divider(), selectors, divider(), nav, divider(),
         Ui.pubvmShell, Ui.lab8051Shell, Ui.labM3Shell, Ui.compareShell,
-        Hr(), poweredBy))
+        divider(), footerRow))
     var shell = View(root)
     shell.bind(body)
     Ui.window.bind(shell)

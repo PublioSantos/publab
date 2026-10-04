@@ -29,6 +29,22 @@ String poweredByName() {
     return "Kof"
 }
 
+String sloganIn(String language) {
+    if (language == "pt" || language == "pt_BR" || language == "pt-BR") {
+        return "Veja a máquina."
+    }
+    return productSlogan()
+}
+
+// The project's own source, shown in the footer next to the Kof attribution.
+String repositoryLabel() {
+    return "GitHub: PublioSantos/publab"
+}
+
+String repositoryUrl() {
+    return "https://github.com/PublioSantos/publab"
+}
+
 String taglineIn(String language) {
     if (language == "pt" || language == "pt_BR" || language == "pt-BR") {
         return "Laboratório Interativo de Arquitetura de Computadores"
