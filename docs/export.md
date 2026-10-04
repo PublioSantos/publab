@@ -2,7 +2,7 @@
 
 # Export — scope
 
-## Status: not started — this page is the scope, awaiting approval
+## Status: stage A done
 
 This page is the scope for phase 12, written before any code, the same
 discipline phases 8-11 used. Phase 12 is different from every phase before
@@ -63,7 +63,17 @@ written with the same care phases 9 and 10 gave the educational models —
 real hardware export is not a feature to back into by extending the
 teaching encoders.
 
-## Stage A — the session export (Option A)
+## Stage A — the session export (Option A) — done
+
+Implemented as `publab/ui/Export.kf`: one `Export` button per laboratory
+(PubVM, 8051, Cortex-M3, and the comparison view), each filling a read-only
+panel with the text block below. The source, the assembled-byte hex dump
+(read back from the machine's own memory, not a second copy kept just for
+this) and the final state all come straight from the same `snapshot()`/
+`assembledSource` the rest of the UI already reads. No file-download API
+exists in Kof's UI runtime, so the export is a selectable on-screen panel —
+the student copies or saves it from there — rather than a browser download,
+which this toolkit cannot trigger.
 
 | item | real or abstraction |
 |---|---|

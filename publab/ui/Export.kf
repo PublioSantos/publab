@@ -1,0 +1,110 @@
+package publab.ui
+
+import publab.machine
+import publab.i8051
+import publab.cm3
+
+// Phase 12 stage A — the session export (docs/export.md, "Option A").
+// Not a real chip's binary: PubVM's, the 8051's and the Cortex-M3's opcode
+// tables are PubLab's own invented educational encodings. This export is
+// PubLab's own session, honestly labelled as such — source, PubLab's own
+// assembled bytes, and the real final state, read from the same snapshot()
+// the UI and tests already use. Nothing here claims hardware compatibility.
+
+String exportWarningEn(String architecture, String docPage) {
+    return "PubLab's own educational encoding — NOT a real " + architecture
+        + "'s binary opcodes. See " + docPage + ". Never flash this onto real hardware."
+}
+
+String exportWarningPt(String architecture, String docPage) {
+    return "Codificação educacional própria do PubLab — NÃO são os opcodes binários reais de"
+        + " um " + architecture + " de verdade. Ver " + docPage + ". Nunca grave isto em hardware real."
+}
+
+// A flat hex dump, 16 bytes per line — the same width memory panels already
+// use, so an exported dump reads like the ones already on screen.
+String exportHexDump(List<Int> bytes) {
+    var out = ""
+    var i = 0
+    while (i < bytes.size) {
+        if (i % 16 == 0) {
+            if (i > 0) { out = out + "\n" }
+            out = out + toHex(i as Long, 4) + ": "
+        }
+        out = out + toHex(bytes.get(i) as Long, 2) + " "
+        i = i + 1
+    }
+    if (bytes.size == 0) { return "(nothing assembled)" }
+    return out
+}
+
+String exportSection(String title, String body) {
+    return "--- " + title + " ---\n" + body + "\n"
+}
+
+String exportSession(String machineName, String architecture, String docPage,
+                     String source, List<Int> bytes, String stateText, String language) {
+    var out = "PubLab export — " + machineName + "\n"
+    if (isPt(language)) { out = out + exportWarningPt(architecture, docPage) + "\n\n" }
+    else { out = out + exportWarningEn(architecture, docPage) + "\n\n" }
+
+    val sourceTitle = if (isPt(language)) "fonte" else "source"
+    val bytesTitle = if (isPt(language)) "bytes montados (formato próprio do PubLab)" else "assembled bytes (PubLab's own format)"
+    val stateTitle = if (isPt(language)) "estado final" else "final state"
+
+    out = out + exportSection(sourceTitle, source) + "\n"
+    out = out + exportSection(bytesTitle, exportHexDump(bytes)) + "\n"
+    out = out + exportSection(stateTitle, stateText)
+    return out
+}
+
+String exportPubvmStateText(MachineState state, String language) {
+    return joinLines(registerLines(state)) + "\n" + flagsText(state) + "\n"
+        + statusText(state, language) + "\n" + outputText(state, language)
+}
+
+String export8051StateText(MachineState8051 state, String language) {
+    return joinLines(registerLines8051(state)) + "\n" + flagsText8051(state) + "\n"
+        + statusText8051(state, language) + "\n" + outputText8051(state, language)
+}
+
+String exportM3StateText(MachineStateM3 state, String language) {
+    return joinLines(registerLinesM3(state)) + "\n" + flagsTextM3(state) + "\n"
+        + statusTextM3(state, language) + "\n" + outputTextM3(state, language)
+}
+
+String exportPubvm(String language) {
+    return exportSession(labState().machineName(), "PubVM", "docs/pubvm.md",
+        labAssembledSource(), labAssembledBytes(), exportPubvmStateText(labState(), language), language)
+}
+
+String export8051(String language) {
+    return exportSession("8051", "8051", "docs/8051.md",
+        lab8051AssembledSource(), lab8051AssembledBytes(),
+        export8051StateText(lab8051State(), language), language)
+}
+
+String exportM3(String language) {
+    return exportSession("Cortex-M3", "Cortex-M3", "docs/cortex-m3.md",
+        labM3AssembledSource(), labM3AssembledBytes(),
+        exportM3StateText(labM3State(), language), language)
+}
+
+// The comparison view's export: the same three real, independently
+// assembled programs the comparison set holds, stacked one export block
+// each, so a student can save the whole set they just compared.
+String exportCompare(String language) {
+    val program = compareSetProgram(compareSelected())
+    var out = exportSession("PubVM-8 (comparison: " + compareSetTitle(compareSelected(), "en") + ")",
+        "PubVM", "docs/pubvm.md", program.pubvmSource(), comparePubvmBytes(),
+        exportPubvmStateText(comparePubvmState(), language), language)
+    out = out + "\n\n"
+    out = out + exportSession("8051 (comparison: " + compareSetTitle(compareSelected(), "en") + ")",
+        "8051", "docs/8051.md", program.i8051Source(), compareM8051Bytes(),
+        export8051StateText(compareM8051State(), language), language)
+    out = out + "\n\n"
+    out = out + exportSession("Cortex-M3 (comparison: " + compareSetTitle(compareSelected(), "en") + ")",
+        "Cortex-M3", "docs/cortex-m3.md", program.cm3Source(), compareM3Bytes(),
+        exportM3StateText(compareM3State(), language), language)
+    return out
+}

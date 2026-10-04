@@ -126,7 +126,7 @@ abaixo é garantida pela suíte de testes.
 | 9 | Modelo educacional do 8051 | etapas A-B concluídas (núcleo + assembler + P0, ainda sem UI) |
 | 10 | Modelo educacional do Cortex-M3 | etapas A-B concluídas (núcleo + assembler + GPIOA, ainda sem UI) |
 | 11 | Comparação entre arquiteturas | etapas A-B concluídas (abas de UI + visão de comparação) |
-| 12 | Export | não iniciada |
+| 12 | Export | etapa A concluída (exportação de sessão, não um binário de hardware) |
 
 Uma ausência nas fases 1-8 é deliberada, não pendência: não existe botão
 **Pause**, porque o runtime de UI JS do Kof não tem timer, então um `Run`

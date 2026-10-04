@@ -249,3 +249,20 @@ String compare8051Label(String language) {
 String compareM3Label(String language) {
     return "Cortex-M3"
 }
+
+// --- phase 12 stage A: the session export ---
+
+String exportTitle(String language) {
+    if (isPt(language)) { return "EXPORTAR" }
+    return "EXPORT"
+}
+
+String exportButtonLabel(String language) {
+    if (isPt(language)) { return "Exportar" }
+    return "Export"
+}
+
+String exportHintBeforeAssemble(String language) {
+    if (isPt(language)) { return "Monte um programa primeiro, depois clique em Exportar." }
+    return "Assemble a program first, then press Export."
+}

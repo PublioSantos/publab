@@ -2,7 +2,7 @@
 
 # Exportação — escopo
 
-## Situação: não iniciada — esta página é o escopo, aguardando aprovação
+## Situação: etapa A concluída
 
 Esta página é o escopo da fase 12, escrita antes de qualquer código, a
 mesma disciplina que as fases 8-11 usaram. A fase 12 é diferente de todas
@@ -69,7 +69,18 @@ peça real específica, escrita com o mesmo cuidado que as fases 9 e 10
 deram aos modelos educacionais — exportação para hardware real não é um
 recurso para se chegar de trás, estendendo os codificadores didáticos.
 
-## Etapa A — a exportação de sessão (Opção A)
+## Etapa A — a exportação de sessão (Opção A) — concluída
+
+Implementada como `publab/ui/Export.kf`: um botão `Export` por laboratório
+(PubVM, 8051, Cortex-M3, e a visão de comparação), cada um preenchendo um
+painel somente leitura com o bloco de texto abaixo. O fonte, o dump hex dos
+bytes montados (lido de volta da própria memória da máquina, não uma
+segunda cópia guardada só para isso) e o estado final vêm diretamente do
+mesmo `snapshot()`/`assembledSource` que o resto da UI já lê. Não existe
+API de download de arquivo no runtime de UI do Kof, então a exportação é
+um painel selecionável na tela — o estudante copia ou salva a partir dali
+— em vez de um download pelo navegador, que este toolkit não consegue
+disparar.
 
 | item | real ou abstração |
 |---|---|

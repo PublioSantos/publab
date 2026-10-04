@@ -93,6 +93,12 @@ class Ui {
     static Button stepButton = Button("", () -> {})
     static Button runButton = Button("", () -> {})
 
+    // Phase 12 stage A: the session export (docs/export.md) — one button and
+    // one read-only text panel per laboratory, including the comparison view.
+    static Button exportButton = Button("", () -> {})
+    static Label exportTitle = Label("")
+    static Label exportPanel = Label("")
+
     // Phase 11 stage A: the 8051 and Cortex-M3 tabs. Their own self-contained
     // widget set, mirroring PubVM's shape but simpler — one multi-line label
     // for registers instead of one per register, since each architecture has
@@ -116,6 +122,9 @@ class Ui {
     static Label diagnostics8051 = Label("")
     static Label explain8051Title = Label("")
     static Label explanation8051 = Label("")
+    static Button export8051Button = Button("", () -> {})
+    static Label export8051Title = Label("")
+    static Label export8051Panel = Label("")
 
     static Label labM3Title = Label("")
     static Textarea editorM3 = Textarea("")
@@ -136,6 +145,9 @@ class Ui {
     static Label diagnosticsM3 = Label("")
     static Label explainM3Title = Label("")
     static Label explanationM3 = Label("")
+    static Button exportM3Button = Button("", () -> {})
+    static Label exportM3Title = Label("")
+    static Label exportM3Panel = Label("")
 
     // Phase 11 stage B: the comparison view. Three real, independently
     // assembled programs run Step-synchronized — see publab/ui/Compare.kf.
@@ -161,6 +173,9 @@ class Ui {
     static Label compareM3Status = Label("")
     static Label compareM3Output = Label("")
     static Label compareM3Explain = Label("")
+    static Button exportCompareButton = Button("", () -> {})
+    static Label exportCompareTitle = Label("")
+    static Label exportComparePanel = Label("")
 
     static View lab8051Shell = View(Style(""))
     static View labM3Shell = View(Style(""))
@@ -302,6 +317,8 @@ void relabel8051() {
     Ui.explain8051Title.text = explainTitle(language)
     Ui.output8051Title.text = outputTitle(language)
     Ui.diagnostics8051Title.text = diagnosticsTitle(language)
+    Ui.export8051Button.text = exportButtonLabel(language)
+    Ui.export8051Title.text = exportTitle(language)
 }
 
 void relabelM3() {
@@ -316,6 +333,8 @@ void relabelM3() {
     Ui.explainM3Title.text = explainTitle(language)
     Ui.outputM3Title.text = outputTitle(language)
     Ui.diagnosticsM3Title.text = diagnosticsTitle(language)
+    Ui.exportM3Button.text = exportButtonLabel(language)
+    Ui.exportM3Title.text = exportTitle(language)
 }
 
 // --- 8051 control handlers ---
@@ -340,6 +359,14 @@ void on8051Run() {
     refresh8051()
 }
 
+void on8051Export() {
+    if (lab8051Assembled()) {
+        Ui.export8051Panel.text = export8051(labLanguage())
+    } else {
+        Ui.export8051Panel.text = exportHintBeforeAssemble(labLanguage())
+    }
+}
+
 // --- Cortex-M3 control handlers ---
 
 void onM3Assemble() {
@@ -360,6 +387,14 @@ void onM3Step() {
 void onM3Run() {
     labM3Run(labLanguage())
     refreshM3()
+}
+
+void onM3Export() {
+    if (labM3Assembled()) {
+        Ui.exportM3Panel.text = exportM3(labLanguage())
+    } else {
+        Ui.exportM3Panel.text = exportHintBeforeAssemble(labLanguage())
+    }
 }
 
 // Phase 11 stage B: the comparison view's own refresh/relabel and handlers.
@@ -398,6 +433,8 @@ void relabelCompare() {
     Ui.comparePubvmLabel.text = comparePubvmLabel(language)
     Ui.compare8051Label.text = compare8051Label(language)
     Ui.compareM3Label.text = compareM3Label(language)
+    Ui.exportCompareButton.text = exportButtonLabel(language)
+    Ui.exportCompareTitle.text = exportTitle(language)
 }
 
 void onCompareSetChange() {
@@ -413,6 +450,14 @@ void onCompareAssemble() {
 void onCompareStep() {
     compareStepAll(labLanguage())
     refreshCompare()
+}
+
+void onCompareExport() {
+    if (compareAssembled()) {
+        Ui.exportComparePanel.text = exportCompare(labLanguage())
+    } else {
+        Ui.exportComparePanel.text = exportHintBeforeAssemble(labLanguage())
+    }
 }
 
 // --- tab switching ---
@@ -486,6 +531,8 @@ void relabel() {
     Ui.stackTitle.text = stackTitle(language)
     Ui.stackNote.text = stackNote(language)
     Ui.explainTitle.text = explainTitle(language)
+    Ui.exportButton.text = exportButtonLabel(language)
+    Ui.exportTitle.text = exportTitle(language)
     relabelNav(language)
 }
 
@@ -516,6 +563,14 @@ void onStep() {
 void onRun() {
     labRun()
     refresh()
+}
+
+void onExport() {
+    if (labAssembled()) {
+        Ui.exportPanel.text = exportPubvm(labLanguage())
+    } else {
+        Ui.exportPanel.text = exportHintBeforeAssemble(labLanguage())
+    }
 }
 
 void onMachineChange() {
@@ -609,8 +664,16 @@ main() {
     Ui.resetButton = Button("", () -> onReset())
     Ui.stepButton = Button("", () -> onStep())
     Ui.runButton = Button("", () -> onRun())
+    Ui.exportButton = Button("", () -> onExport())
     var controls = Row(listOf(Ui.assembleButton, Ui.resetButton,
-        Ui.stepButton, Ui.runButton))
+        Ui.stepButton, Ui.runButton, Ui.exportButton))
+
+    // --- phase 12 stage A: the session export panel ---
+    Ui.exportTitle = sectionTitle(Label(""))
+    Ui.exportPanel = Label("")
+    Ui.exportPanel.fontSize = 11
+    var exportPanelView = View(panel)
+    exportPanelView.bind(Column(listOf(Ui.exportTitle, Ui.exportPanel)))
 
     Ui.message = Label("")
     Ui.message.fontSize = 12
@@ -719,8 +782,15 @@ main() {
     Ui.reset8051Button = Button("", () -> on8051Reset())
     Ui.step8051Button = Button("", () -> on8051Step())
     Ui.run8051Button = Button("", () -> on8051Run())
+    Ui.export8051Button = Button("", () -> on8051Export())
     var controls8051 = Row(listOf(Ui.assemble8051Button, Ui.reset8051Button,
-        Ui.step8051Button, Ui.run8051Button))
+        Ui.step8051Button, Ui.run8051Button, Ui.export8051Button))
+
+    Ui.export8051Title = sectionTitle(Label(""))
+    Ui.export8051Panel = Label("")
+    Ui.export8051Panel.fontSize = 11
+    var export8051PanelView = View(panel)
+    export8051PanelView.bind(Column(listOf(Ui.export8051Title, Ui.export8051Panel)))
 
     Ui.message8051 = Label("")
     Ui.message8051.fontSize = 12
@@ -763,7 +833,7 @@ main() {
         Ui.editor8051, controls8051, Ui.message8051,
         Ui.status8051, Ui.current8051,
         Row(listOf(registers8051Panel, flags8051Panel)),
-        explain8051Panel, output8051Panel, diagnostics8051Panel))
+        explain8051Panel, output8051Panel, diagnostics8051Panel, export8051PanelView))
     Ui.lab8051Shell = View(root)
     Ui.lab8051Shell.bind(lab8051Body)
 
@@ -781,8 +851,15 @@ main() {
     Ui.resetM3Button = Button("", () -> onM3Reset())
     Ui.stepM3Button = Button("", () -> onM3Step())
     Ui.runM3Button = Button("", () -> onM3Run())
+    Ui.exportM3Button = Button("", () -> onM3Export())
     var controlsM3 = Row(listOf(Ui.assembleM3Button, Ui.resetM3Button,
-        Ui.stepM3Button, Ui.runM3Button))
+        Ui.stepM3Button, Ui.runM3Button, Ui.exportM3Button))
+
+    Ui.exportM3Title = sectionTitle(Label(""))
+    Ui.exportM3Panel = Label("")
+    Ui.exportM3Panel.fontSize = 11
+    var exportM3PanelView = View(panel)
+    exportM3PanelView.bind(Column(listOf(Ui.exportM3Title, Ui.exportM3Panel)))
 
     Ui.messageM3 = Label("")
     Ui.messageM3.fontSize = 12
@@ -825,7 +902,7 @@ main() {
         Ui.editorM3, controlsM3, Ui.messageM3,
         Ui.statusM3, Ui.currentM3,
         Row(listOf(registersM3Panel, flagsM3Panel)),
-        explainM3Panel, outputM3Panel, diagnosticsM3Panel))
+        explainM3Panel, outputM3Panel, diagnosticsM3Panel, exportM3PanelView))
     Ui.labM3Shell = View(root)
     Ui.labM3Shell.bind(labM3Body)
 
@@ -852,7 +929,15 @@ main() {
 
     Ui.compareAssembleButton = Button("", () -> onCompareAssemble())
     Ui.compareStepButton = Button("", () -> onCompareStep())
-    var compareControls = Row(listOf(Ui.compareAssembleButton, Ui.compareStepButton))
+    Ui.exportCompareButton = Button("", () -> onCompareExport())
+    var compareControls = Row(listOf(Ui.compareAssembleButton, Ui.compareStepButton,
+        Ui.exportCompareButton))
+
+    Ui.exportCompareTitle = sectionTitle(Label(""))
+    Ui.exportComparePanel = Label("")
+    Ui.exportComparePanel.fontSize = 11
+    var exportComparePanelView = View(panel)
+    exportComparePanelView.bind(Column(listOf(Ui.exportCompareTitle, Ui.exportComparePanel)))
 
     Ui.compareMessage = Label("")
     Ui.compareMessage.fontSize = 12
@@ -891,7 +976,8 @@ main() {
     var compareBody = Column(listOf(Ui.compareTitle,
         Row(listOf(Ui.compareSetLabel, Ui.compareSets)),
         Ui.compareDescription, compareControls, Ui.compareMessage,
-        Row(listOf(comparePubvmPanel, compare8051Panel, compareM3Panel))))
+        Row(listOf(comparePubvmPanel, compare8051Panel, compareM3Panel)),
+        exportComparePanelView))
     Ui.compareShell = View(root)
     Ui.compareShell.bind(compareBody)
 
@@ -904,7 +990,7 @@ main() {
         Ui.machineSummary, Ui.status, Ui.current, Ui.sourceLine, Hr(),
         Row(listOf(registersPanel, flagsPanel)),
         explainPanel, changesPanel, memoryPanel, stackPanel,
-        outputPanel, diagnosticsPanel))
+        outputPanel, diagnosticsPanel, exportPanelView))
     Ui.pubvmShell = View(root)
     Ui.pubvmShell.bind(pubvmBody)
 

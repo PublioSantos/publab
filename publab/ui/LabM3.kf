@@ -14,7 +14,12 @@ class LabM3State {
     static String message = ""
     static Bool assembled = false
     static Int imageBytes = 0
+    static String assembledSource = ""
     static MachineStateM3 previous = MachineM3().snapshot()
+}
+
+String labM3AssembledSource() {
+    return LabM3State.assembledSource
 }
 
 String labM3DefaultSource() {
@@ -52,6 +57,18 @@ void labM3Remember() {
     LabM3State.previous = LabM3State.machine.snapshot()
 }
 
+// The assembled bytes, read back from memory — see labAssembledBytes() in
+// Lab.kf for why this reads live memory instead of keeping a second copy.
+List<Int> labM3AssembledBytes() {
+    var bytes: List<Int> = listOf()
+    var i = 0
+    while (i < LabM3State.imageBytes) {
+        bytes.add(LabM3State.machine.memory.readByte(i))
+        i = i + 1
+    }
+    return bytes
+}
+
 String labM3Explanation(String language) {
     if (!LabM3State.assembled) { return noExplainYetM3(language) }
     return instructionExplanationM3(LabM3State.previous, LabM3State.machine.snapshot(), language)
@@ -65,10 +82,12 @@ Bool labM3Assemble(String source, String language) {
         LabM3State.machine.load(result.image())
         LabM3State.assembled = true
         LabM3State.imageBytes = result.byteCount()
+        LabM3State.assembledSource = source
         LabM3State.message = assembledMessage(result.byteCount(), language)
     } else {
         LabM3State.assembled = false
         LabM3State.imageBytes = 0
+        LabM3State.assembledSource = ""
         LabM3State.message = assemblyFailedMessage(language)
     }
     labM3Remember()

@@ -126,7 +126,7 @@ below is enforced by the test suite.
 | 9 | 8051 educational model | stages A-B done (core + assembler + P0, no UI yet) |
 | 10 | Cortex-M3 educational model | stages A-B done (core + assembler + GPIOA, no UI yet) |
 | 11 | Architecture comparison | stages A-B done (8051/Cortex-M3 UI tabs + comparison view) |
-| 12 | Export | not started |
+| 12 | Export | stage A done (session export, not a hardware binary) |
 
 One absence in phases 1-8 is deliberate rather than pending: there is no
 **Pause** button, because Kof's JS UI runtime has no timer, so a run cannot

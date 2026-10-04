@@ -14,7 +14,12 @@ class Lab8051State {
     static String message = ""
     static Bool assembled = false
     static Int imageBytes = 0
+    static String assembledSource = ""
     static MachineState8051 previous = Machine8051().snapshot()
+}
+
+String lab8051AssembledSource() {
+    return Lab8051State.assembledSource
 }
 
 String lab8051DefaultSource() {
@@ -51,6 +56,18 @@ void lab8051Remember() {
     Lab8051State.previous = Lab8051State.machine.snapshot()
 }
 
+// The assembled bytes, read back from Code Memory — see labAssembledBytes()
+// in Lab.kf for why this reads live memory instead of keeping a second copy.
+List<Int> lab8051AssembledBytes() {
+    var bytes: List<Int> = listOf()
+    var i = 0
+    while (i < Lab8051State.imageBytes) {
+        bytes.add(Lab8051State.machine.codeMemory.readByte(i))
+        i = i + 1
+    }
+    return bytes
+}
+
 String lab8051Explanation(String language) {
     if (!Lab8051State.assembled) { return noExplainYet8051(language) }
     return instructionExplanation8051(Lab8051State.previous, Lab8051State.machine.snapshot(), language)
@@ -64,10 +81,12 @@ Bool lab8051Assemble(String source, String language) {
         Lab8051State.machine.load(result.image())
         Lab8051State.assembled = true
         Lab8051State.imageBytes = result.byteCount()
+        Lab8051State.assembledSource = source
         Lab8051State.message = assembledMessage(result.byteCount(), language)
     } else {
         Lab8051State.assembled = false
         Lab8051State.imageBytes = 0
+        Lab8051State.assembledSource = ""
         Lab8051State.message = assemblyFailedMessage(language)
     }
     lab8051Remember()

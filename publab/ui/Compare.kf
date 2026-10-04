@@ -105,6 +105,9 @@ class CompareState {
     static MachineM3 m3 = MachineM3()
     static Bool assembled = false
     static String message = ""
+    static Int pubvmBytes = 0
+    static Int m8051Bytes = 0
+    static Int m3Bytes = 0
     static MachineState pubvmPrevious = Machine(pubvm8()).snapshot()
     static MachineState8051 m8051Previous = Machine8051().snapshot()
     static MachineStateM3 m3Previous = MachineM3().snapshot()
@@ -137,6 +140,38 @@ MachineState comparePubvmState() { return CompareState.pubvm.snapshot() }
 MachineState8051 compareM8051State() { return CompareState.m8051.snapshot() }
 MachineStateM3 compareM3State() { return CompareState.m3.snapshot() }
 
+// Assembled bytes per machine, read back from each one's real memory — see
+// labAssembledBytes() in Lab.kf for why.
+List<Int> comparePubvmBytes() {
+    var bytes: List<Int> = listOf()
+    var i = 0
+    while (i < CompareState.pubvmBytes) {
+        bytes.add(CompareState.pubvm.memory.readByte(i))
+        i = i + 1
+    }
+    return bytes
+}
+
+List<Int> compareM8051Bytes() {
+    var bytes: List<Int> = listOf()
+    var i = 0
+    while (i < CompareState.m8051Bytes) {
+        bytes.add(CompareState.m8051.codeMemory.readByte(i))
+        i = i + 1
+    }
+    return bytes
+}
+
+List<Int> compareM3Bytes() {
+    var bytes: List<Int> = listOf()
+    var i = 0
+    while (i < CompareState.m3Bytes) {
+        bytes.add(CompareState.m3.memory.readByte(i))
+        i = i + 1
+    }
+    return bytes
+}
+
 String comparePubvmExplanation(String language) {
     if (!CompareState.assembled) { return noExplainYet(language) }
     return instructionExplanation(CompareState.pubvmPrevious, CompareState.pubvm.snapshot(), language)
@@ -168,9 +203,15 @@ Bool compareAssemble(String language) {
         CompareState.m8051.load(e.image())
         CompareState.m3.load(m.image())
         CompareState.assembled = true
+        CompareState.pubvmBytes = p.byteCount()
+        CompareState.m8051Bytes = e.byteCount()
+        CompareState.m3Bytes = m.byteCount()
         CompareState.message = assembledMessage(p.byteCount() + e.byteCount() + m.byteCount(), language)
     } else {
         CompareState.assembled = false
+        CompareState.pubvmBytes = 0
+        CompareState.m8051Bytes = 0
+        CompareState.m3Bytes = 0
         CompareState.message = assemblyFailedMessage(language)
     }
     CompareState.pubvmPrevious = CompareState.pubvm.snapshot()

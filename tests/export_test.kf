@@ -1,0 +1,82 @@
+package tests
+
+import publab.machine
+import publab.assembler
+import publab.i8051
+import publab.cm3
+import publab.ui
+
+// Phase 12 stage A — the session export (docs/export.md). Not a real
+// chip's binary: this asserts the exported text is PubLab's own real
+// session (source verbatim, the real assembled bytes, the real final
+// state) and that the warning paragraph is present in both languages —
+// the same "built from real state, not re-derived" rule tests/ui8051_test.kf
+// and tests/uiM3_test.kf already follow for their own panels.
+
+test "exportPubvm carries the real source verbatim and the real final state" {
+    labSelectMachine(0)
+    labAssemble("LOAD A, 250\nLOAD B, 20\nADD A, B\nPRINT A\nHALT\n")
+    labStep()
+    labRun()
+    val text = exportPubvm("en")
+    assert(text.contains("LOAD A, 250"), text)
+    assert(text.contains("PubLab's own educational encoding"), text)
+    assert(text.contains("Never flash this onto real hardware"), text)
+    assert(text.contains("HALTED") || text.contains("halted"), text)
+}
+
+test "exportPubvm in Portuguese carries the Portuguese warning" {
+    labSelectMachine(0)
+    labAssemble("LOAD A, 1\nHALT\n")
+    val text = exportPubvm("pt")
+    assert(text.contains("Codificação educacional própria do PubLab"), text)
+    assert(text.contains("Nunca grave isto em hardware real"), text)
+}
+
+test "exportPubvm's hex dump reflects the real assembled bytes" {
+    labSelectMachine(0)
+    labAssemble("HALT\n")
+    val text = exportPubvm("en")
+    val bytes = labAssembledBytes()
+    assert(bytes.size > 0)
+    assert(text.contains(toHex(bytes.get(0) as Long, 2)), text)
+}
+
+test "export8051 carries the real source and warns it is not real 8051 silicon" {
+    lab8051Assemble("MOV A, #250\nMOV B, #20\nADD A, B\nPRINT A\nHALT\n", "en")
+    lab8051Run("en")
+    val text = export8051("en")
+    assert(text.contains("MOV A, #250"), text)
+    assert(text.contains("NOT a real 8051"), text)
+}
+
+test "exportM3 carries the real source and warns it is not real Cortex-M3 silicon" {
+    labM3Assemble("MOV R0, #3\nHALT\n", "en")
+    labM3Run("en")
+    val text = exportM3("en")
+    assert(text.contains("MOV R0, #3"), text)
+    assert(text.contains("NOT a real Cortex-M3"), text)
+}
+
+test "exportCompare stacks all three real architectures' own source and state" {
+    compareSelect(0)
+    compareAssemble("en")
+    var i = 0
+    while (i < 20 && statusName(compareM3State().status()) != "HALTED") {
+        compareStepAll("en")
+        i = i + 1
+    }
+    val text = exportCompare("en")
+    assert(text.contains("LOAD A, 250"), text)
+    assert(text.contains("MOV A, #250"), text)
+    assert(text.contains("SUB R2, R0, R1"), text)
+    assert(text.contains("NOT a real PubVM"), text)
+    assert(text.contains("NOT a real 8051"), text)
+    assert(text.contains("NOT a real Cortex-M3"), text)
+}
+
+test "an unassembled machine exports an honest empty hex dump, not a crash" {
+    labSelectMachine(0)
+    val text = exportPubvm("en")
+    assert(text.contains("nothing assembled"), text)
+}

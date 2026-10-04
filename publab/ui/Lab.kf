@@ -70,6 +70,20 @@ MachineState labState() {
     return Lab.machine.snapshot()
 }
 
+// The assembled bytes themselves, read back from the real memory they were
+// loaded into (address 0 upward, the same place assembleSource put them) —
+// not a second copy kept just for this; phase 12's export reads exactly
+// this (docs/export.md).
+List<Int> labAssembledBytes() {
+    var bytes: List<Int> = listOf()
+    var i = 0
+    while (i < Lab.imageBytes) {
+        bytes.add(Lab.machine.memory.readByte(i))
+        i = i + 1
+    }
+    return bytes
+}
+
 List<String> labMachineNames() {
     var names: List<String> = listOf()
     for (var machine in allMachines()) { names.add(machine.name()) }
