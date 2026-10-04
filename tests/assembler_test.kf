@@ -1,0 +1,204 @@
+package tests
+
+import kofplab.machine
+import kofplab.assembler
+
+AssemblyResult assemble8(String source) {
+    return assembleSource(source, kofvm8())
+}
+
+String errorsOf(String source) {
+    return renderDiagnostics(assemble8(source).diagnostics(), "en")
+}
+
+test "the golden program assembles to the expected bytes" {
+    val r = assemble8("LOAD A, 250\nLOAD B, 20\nADD A, B\nPRINT A\nHALT")
+    assert(r.ok(), errorsOf("LOAD A, 250\nLOAD B, 20\nADD A, B\nPRINT A\nHALT"))
+    assert(r.byteCount() == 12)
+    val image = r.image()
+    assert(image.get(0) == 0x10 && image.get(1) == 0x00 && image.get(2) == 250, "LOAD A, 250")
+    assert(image.get(3) == 0x10 && image.get(4) == 0x01 && image.get(5) == 20, "LOAD B, 20")
+    assert(image.get(6) == 0x21 && image.get(7) == 0x00 && image.get(8) == 0x01, "ADD A, B")
+    assert(image.get(9) == 0x60 && image.get(10) == 0x00, "PRINT A")
+    assert(image.get(11) == 0x00, "HALT")
+}
+
+test "mnemonics and registers are case-insensitive" {
+    val upper = assemble8("LOAD A, 1\nHALT")
+    val lower = assemble8("load a, 1\nhalt")
+    assert(lower.ok())
+    assert(upper.image().get(0) == lower.image().get(0))
+    assert(upper.image().get(1) == lower.image().get(1))
+}
+
+test "an immediate grows with the word size" {
+    val eight = assembleSource("LOAD A, 250\nHALT", kofvm8())
+    val sixteen = assembleSource("LOAD A, 250\nHALT", MachineConfig("KofVM-16", 16, 65536, 16, 0))
+    assert(eight.byteCount() == 4, "op + reg + 1 byte + HALT")
+    assert(sixteen.byteCount() == 5, "op + reg + 2 bytes + HALT")
+    assert(sixteen.image().get(2) == 250 && sixteen.image().get(3) == 0, "little-endian")
+}
+
+test "the source map ties each address back to its line" {
+    val r = assemble8("LOAD A, 250\n; a comment\nLOAD B, 20\nHALT")
+    assert(r.ok())
+    assert(r.sourceMap().size == 3)
+    assert(r.sourceMap().get(0).address() == 0 && r.sourceMap().get(0).line() == 1)
+    assert(r.sourceMap().get(1).address() == 3 && r.sourceMap().get(1).line() == 3)
+    assert(r.sourceMap().get(2).address() == 6 && r.sourceMap().get(2).line() == 4)
+    assert(lineForAddress(r.sourceMap(), 3).found())
+    assert(lineForAddress(r.sourceMap(), 3).line() == 3)
+    assert(lineForAddress(r.sourceMap(), 4).found() == false, "mid-instruction is not a line start")
+}
+
+test "labels resolve to real addresses, forwards and backwards" {
+    //   0: LOAD A, 3      (3 bytes)
+    //   3: loop: SUB A, 1 (3 bytes)
+    //   6: JZ done        (3 bytes)
+    //   9: JMP loop       (3 bytes)
+    //  12: done: HALT     (1 byte)
+    val r = assemble8("LOAD A, 3\nloop:\nSUB A, 1\nJZ done\nJMP loop\ndone:\nHALT")
+    assert(r.ok(), errorsOf("LOAD A, 3\nloop:\nSUB A, 1\nJZ done\nJMP loop\ndone:\nHALT"))
+    assert(r.symbols().size == 2)
+    assert(findSymbol(r.symbols(), "loop").address() == 3)
+    assert(findSymbol(r.symbols(), "done").address() == 12, "forward reference")
+    assert(r.image().get(7) == 12 && r.image().get(8) == 0, "JZ done -> 0x000C little-endian")
+    assert(r.image().get(10) == 3 && r.image().get(11) == 0, "JMP loop -> 0x0003")
+}
+
+test "a label on the line after the last instruction points past the program" {
+    val r = assemble8("JZ done\nHALT\ndone:")
+    assert(r.ok())
+    assert(findSymbol(r.symbols(), "done").address() == 4, "3 bytes of JZ plus 1 of HALT")
+}
+
+test "numeric jump targets and memory addresses" {
+    val r = assemble8("JMP 0x10\nSTORE [32], A\nLOAD B, [0b100000]\nHALT")
+    assert(r.ok(), errorsOf("JMP 0x10\nSTORE [32], A\nLOAD B, [0b100000]\nHALT"))
+    assert(r.image().get(1) == 0x10 && r.image().get(2) == 0)
+    assert(r.image().get(4) == 32 && r.image().get(5) == 0)
+    assert(r.image().get(9) == 32)
+}
+
+test "an immediate that does not fit the word is rejected" {
+    val r = assemble8("LOAD A, 300\nHALT")
+    assert(r.ok() == false)
+    assert(r.image().size == 0, "a failed assembly produces no image")
+    val d = r.diagnostics().get(0)
+    assert(d.code() == "ASM005")
+    assert(d.line() == 1 && d.column() == 9)
+    val text = renderDiagnostic(d, "en")
+    assert(text.contains("immediate 300 does not fit in a 8-bit word"))
+    assert(text.contains("Valid range for 8 bits: -128 to 255."))
+    assert(renderDiagnostic(d, "pt").contains("não cabe em uma palavra de 8 bits"))
+}
+
+test "a negative immediate is accepted and stored in two's complement" {
+    val r = assemble8("LOAD A, -6\nHALT")
+    assert(r.ok(), errorsOf("LOAD A, -6\nHALT"))
+    assert(r.image().get(2) == 250)
+    assert(assemble8("LOAD A, -129\nHALT").ok() == false, "-129 does not fit in 8 bits")
+}
+
+test "an undefined label is reported with a usable hint" {
+    val r = assemble8("JMP nowhere\nHALT")
+    assert(r.ok() == false)
+    val d = r.diagnostics().get(0)
+    assert(d.code() == "ASM006")
+    val text = renderDiagnostic(d, "en")
+    assert(text.contains("undefined label 'nowhere'"))
+    assert(text.contains("Define it by writing 'nowhere:'"))
+    assert(renderDiagnostic(d, "pt").contains("label não definido 'nowhere'"))
+}
+
+test "a duplicate label names the first definition" {
+    val r = assemble8("loop:\nHALT\nloop:\nHALT")
+    assert(r.ok() == false)
+    val d = r.diagnostics().get(0)
+    assert(d.code() == "ASM007")
+    assert(renderDiagnostic(d, "en").contains("label 'loop' is already defined (line 1)"))
+}
+
+test "an unknown instruction is distinguished from an advanced one" {
+    val unknown = assemble8("FOO A, 1\nHALT")
+    assert(unknown.ok() == false)
+    assert(unknown.diagnostics().get(0).code() == "ASM001")
+    assert(renderDiagnostic(unknown.diagnostics().get(0), "en").contains("unknown instruction 'FOO'"))
+
+    val advanced = assemble8("PUSH A\nHALT")
+    assert(advanced.ok() == false)
+    val d = advanced.diagnostics().get(0)
+    assert(d.code() == "ASM010")
+    val text = renderDiagnostic(d, "en")
+    assert(text.contains("'PUSH' belongs to Advanced Mode, which is not implemented yet"))
+    assert(text.contains("LOAD, STORE, ADD, SUB, AND, OR, XOR, NOT, JMP, JZ, JC, PRINT, HALT"))
+    assert(renderDiagnostic(d, "pt").contains("As fases 1-2 implementam"))
+}
+
+test "a wrong operand shape says what was expected, in both languages" {
+    val r = assemble8("ADD A, [16]\nHALT")
+    assert(r.ok() == false)
+    val d = r.diagnostics().get(0)
+    assert(d.code() == "ASM002")
+    val en = renderDiagnostic(d, "en")
+    assert(en.contains("invalid operand for ADD"))
+    assert(en.contains("Expected: register, immediate / register, register."))
+    val pt = renderDiagnostic(d, "pt")
+    assert(pt.contains("operando inválido para ADD"))
+    assert(pt.contains("Esperado: registrador, imediato / registrador, registrador."))
+}
+
+test "a wrong operand count is reported as a count" {
+    val r = assemble8("ADD A\nHALT")
+    assert(r.ok() == false)
+    val d = r.diagnostics().get(0)
+    assert(d.code() == "ASM003")
+    assert(renderDiagnostic(d, "en").contains("ADD takes 2 operand(s), but got 1"))
+    assert(renderDiagnostic(d, "pt").contains("ADD recebe 2 operando(s), mas veio 1"))
+}
+
+test "an address outside memory is rejected" {
+    val small = MachineConfig("KofVM-8/tiny", 8, 64, 16, 0)
+    val r = assembleSource("JMP 0x100\nHALT", small)
+    assert(r.ok() == false)
+    val d = r.diagnostics().get(0)
+    assert(d.code() == "ASM008")
+    val text = renderDiagnostic(d, "en")
+    assert(text.contains("address 256 is outside"))
+    assert(text.contains("This machine has 64 bytes, so addresses run from 0 to 63."))
+}
+
+test "a program larger than memory is rejected" {
+    val tiny = MachineConfig("KofVM-8/tiny", 8, 4, 16, 0)
+    val r = assembleSource("LOAD A, 1\nLOAD B, 2\nHALT", tiny)
+    assert(r.ok() == false)
+    assert(r.diagnostics().get(0).code() == "ASM013")
+    assert(renderDiagnostic(r.diagnostics().get(0), "en").contains("needs 7 bytes but this machine has 4"))
+}
+
+test "lexical errors stop the assembly before any encoding" {
+    val r = assemble8("LOAD A, 0x2G\nHALT")
+    assert(r.ok() == false)
+    assert(r.diagnostics().get(0).code() == "ASM011")
+    assert(r.image().size == 0)
+}
+
+test "every operand form round-trips through the machine's own decoder" {
+    val source = "LOAD A, 5\nLOAD B, A\nLOAD C, [40]\nSTORE [40], D\nADD A, B\nSUB A, 1\n"
+        + "AND A, B\nOR A, B\nXOR A, B\nNOT A\nPRINT A\nJMP done\ndone:\nHALT"
+    val r = assemble8(source)
+    assert(r.ok(), errorsOf(source))
+    var machine = Machine(kofvm8())
+    machine.load(r.image())
+    var expected = listOf("LOAD A, 5", "LOAD B, A", "LOAD C, [0x0028]", "STORE [0x0028], D",
+        "ADD A, B", "SUB A, 1", "AND A, B", "OR A, B", "XOR A, B", "NOT A", "PRINT A",
+        "JMP 0x0024", "HALT")
+    var i = 0
+    while (i < expected.size) {
+        assert(machine.currentInstructionText() == expected.get(i),
+            "at index " + i + " expected " + expected.get(i) + " but memory holds "
+                + machine.currentInstructionText())
+        if (expected.get(i) != "HALT") { assert(machine.step()) }
+        i = i + 1
+    }
+}

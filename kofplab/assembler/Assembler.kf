@@ -1,0 +1,257 @@
+package kofplab.assembler
+
+import kofplab.machine
+
+// The assembler. Two passes:
+//
+//   pass 1  resolve each line against the opcode table, compute its length and
+//           assign its address; then build the symbol table from the labels
+//   pass 2  encode the bytes, resolving label references
+//
+// The image is only meaningful when `ok` is true; on failure it comes back
+// empty so a broken program can never be loaded by accident.
+
+record SourceMapEntry(Int address, Int line, Int instructionIndex)
+
+record Symbol(String name, Int address)
+
+record AssemblyResult(Bool ok, List<Int> image, Int entryPoint, Int byteCount,
+                      List<Diagnostic> diagnostics, List<SourceMapEntry> sourceMap,
+                      List<Symbol> symbols)
+
+record Placed(Int index, Int address, Int opcode, Int form, Int length)
+
+List<Int> newImage() {
+    var l: List<Int> = listOf()
+    return l
+}
+
+List<Placed> emptyPlaced() {
+    var l: List<kofplab.assembler.Placed> = listOf()
+    return l
+}
+
+List<Symbol> emptySymbols() {
+    var l: List<kofplab.assembler.Symbol> = listOf()
+    return l
+}
+
+List<SourceMapEntry> emptySourceMap() {
+    var l: List<kofplab.assembler.SourceMapEntry> = listOf()
+    return l
+}
+
+AssemblyResult failedAssembly(List<Diagnostic> diagnostics) {
+    return AssemblyResult(false, newImage(), 0, 0, diagnostics, emptySourceMap(), emptySymbols())
+}
+
+// A language-neutral argument listing accepted operand forms; the renderer
+// expands it in the reader's language.
+String formListArg(List<Int> forms) {
+    var out = "form:"
+    var first = true
+    for (var f in forms) {
+        if (!first) { out = out + "," }
+        out = out + f
+        first = false
+    }
+    return out
+}
+
+Bool allFormsShareOperandCount(List<Int> forms, Int count) {
+    for (var f in forms) {
+        if (formOperandCount(f) != count) { return false }
+    }
+    return forms.size > 0
+}
+
+Bool immediateFits(Long value, Int wordSize) {
+    return value >= wordMinSigned(wordSize) && value <= wordMaxUnsigned(wordSize)
+}
+
+void appendWordBytes(List<Int> image, Long value, Int bytes) {
+    var i = 0
+    while (i < bytes) {
+        image.add((((value >>> (i * 8)) & (255 as Long)) as Int))
+        i = i + 1
+    }
+}
+
+record SymbolLookup(Bool found, Int address)
+
+SymbolLookup findSymbol(List<Symbol> symbols, String name) {
+    for (var s in symbols) {
+        if (s.name() == name) { return SymbolLookup(true, s.address()) }
+    }
+    return SymbolLookup(false, 0)
+}
+
+// Where in the source a given machine address came from — this is what lets a
+// debugger highlight the current line (phase 6).
+record LineLookup(Bool found, Int line)
+
+LineLookup lineForAddress(List<SourceMapEntry> sourceMap, Int address) {
+    for (var entry in sourceMap) {
+        if (entry.address() == address) { return LineLookup(true, entry.line()) }
+    }
+    return LineLookup(false, 0)
+}
+
+AssemblyResult assembleSource(String source, MachineConfig config) {
+    val lexed = lexSource(source)
+    var diagnostics = emptyDiagnostics()
+    for (var d in lexed.diagnostics()) { diagnostics.add(d) }
+    val parsed = parseTokens(lexed.tokens())
+    for (var d in parsed.diagnostics()) { diagnostics.add(d) }
+    if (hasErrors(diagnostics)) { return failedAssembly(diagnostics) }
+
+    val wordSize = config.wordSize()
+    val addressWidth = addressBytes(config.addressBits())
+    val instructions = parsed.instructions()
+
+    // Pass 1 — resolve and place.
+    var placed = emptyPlaced()
+    var address = config.entryPoint()
+    var index = 0
+    for (var instruction in instructions) {
+        val mnemonic = instruction.mnemonic()
+        val accepted = formsForMnemonic(mnemonic)
+        if (isAdvancedMnemonic(mnemonic)) {
+            diagnostics.add(errorAt("ASM010", instruction.line(), instruction.column(),
+                args1(mnemonic.toUpperCase())))
+        } else if (!mnemonicExists(mnemonic)) {
+            diagnostics.add(errorAt("ASM001", instruction.line(), instruction.column(),
+                args1(mnemonic)))
+        } else {
+            val guess = formFromOperands(instruction.operands())
+            var resolvedForm = formNone()
+            var resolvedOk = false
+            if (guess.ok()) {
+                val look = lookupInstruction(mnemonic, guess.form())
+                if (look.found()) {
+                    resolvedForm = look.form()
+                    resolvedOk = true
+                    placed.add(Placed(index, address, look.opcode(), look.form(),
+                        instructionLength(look.form(), wordSize, config.addressBits())))
+                }
+            }
+            if (!resolvedOk) {
+                val given = instruction.operands().size
+                if (allFormsShareOperandCount(accepted, formOperandCount(accepted.get(0)))
+                        && formOperandCount(accepted.get(0)) != given) {
+                    diagnostics.add(errorAt("ASM003", instruction.line(), instruction.column(),
+                        args3(mnemonic.toUpperCase(), "" + formOperandCount(accepted.get(0)),
+                            "" + given)))
+                } else {
+                    diagnostics.add(errorAt("ASM002", instruction.line(), instruction.column(),
+                        args2(mnemonic.toUpperCase(), formListArg(accepted))))
+                }
+            }
+        }
+        if (placed.size > 0 && placed.get(placed.size - 1).index() == index) {
+            address = address + placed.get(placed.size - 1).length()
+        }
+        index = index + 1
+    }
+    if (hasErrors(diagnostics)) { return failedAssembly(diagnostics) }
+
+    if (address > config.memorySize()) {
+        diagnostics.add(errorAt("ASM013", 1, 0,
+            args2("" + (address - config.entryPoint()), "" + config.memorySize())))
+        return failedAssembly(diagnostics)
+    }
+
+    // Symbol table. A label on the line after the last instruction points at
+    // the end of the program, which is a legal jump target.
+    var symbols = emptySymbols()
+    for (var label in parsed.labels()) {
+        val existing = findSymbol(symbols, label.name())
+        if (existing.found()) {
+            diagnostics.add(errorAt("ASM007", label.line(), label.column(),
+                args2(label.name(), "" + firstDefinitionLine(parsed.labels(), label.name()))))
+        } else {
+            var target = address
+            if (label.instructionIndex() < placed.size) {
+                target = placed.get(label.instructionIndex()).address()
+            }
+            symbols.add(Symbol(label.name(), target))
+        }
+    }
+    if (hasErrors(diagnostics)) { return failedAssembly(diagnostics) }
+
+    // Pass 2 — encode.
+    var image = newImage()
+    var sourceMap = emptySourceMap()
+    var i = 0
+    while (i < placed.size) {
+        val spot = placed.get(i)
+        // Paired by the instruction index the placement recorded, never by
+        // position, so the two lists cannot drift apart.
+        val instruction = instructions.get(spot.index())
+        val operands = instruction.operands()
+        sourceMap.add(SourceMapEntry(spot.address(), instruction.line(), spot.index()))
+        image.add(spot.opcode())
+        val form = spot.form()
+        if (form == formReg()) {
+            image.add(operands.get(0).reg())
+        } else if (form == formRegImm()) {
+            image.add(operands.get(0).reg())
+            val immediate = operands.get(1)
+            if (!immediateFits(immediate.imm(), wordSize)) {
+                diagnostics.add(errorAt("ASM005", immediate.line(), immediate.column(),
+                    args4("" + immediate.imm(), "" + wordSize,
+                        "" + wordMinSigned(wordSize), "" + wordMaxUnsigned(wordSize))))
+            }
+            appendWordBytes(image, wordWrap(immediate.imm(), wordSize), wordBytes(wordSize))
+        } else if (form == formRegReg()) {
+            image.add(operands.get(0).reg())
+            image.add(operands.get(1).reg())
+        } else if (form == formRegAddr()) {
+            image.add(operands.get(0).reg())
+            val target = resolveAddressOperand(operands.get(1), symbols, config, diagnostics)
+            appendWordBytes(image, target as Long, addressWidth)
+        } else if (form == formAddrReg()) {
+            val target = resolveAddressOperand(operands.get(0), symbols, config, diagnostics)
+            appendWordBytes(image, target as Long, addressWidth)
+            image.add(operands.get(1).reg())
+        } else if (form == formAddr()) {
+            val target = resolveAddressOperand(operands.get(0), symbols, config, diagnostics)
+            appendWordBytes(image, target as Long, addressWidth)
+        }
+        i = i + 1
+    }
+    if (hasErrors(diagnostics)) { return failedAssembly(diagnostics) }
+    return AssemblyResult(true, image, config.entryPoint(), image.size,
+        diagnostics, sourceMap, symbols)
+}
+
+Int firstDefinitionLine(List<LabelDef> labels, String name) {
+    for (var label in labels) {
+        if (label.name() == name) { return label.line() }
+    }
+    return 0
+}
+
+// Resolves an address operand (literal, [literal] or a label) and range-checks
+// it against the machine's memory.
+Int resolveAddressOperand(Operand operand, List<Symbol> symbols, MachineConfig config,
+                        List<Diagnostic> diagnostics) {
+    var address = 0
+    if (operand.kind() == "imm" || operand.kind() == "mem") {
+        address = (operand.imm() as Int)
+    } else {
+        val found = findSymbol(symbols, operand.label())
+        if (!found.found()) {
+            diagnostics.add(errorAt("ASM006", operand.line(), operand.column(),
+                args1(operand.label())))
+            return 0
+        }
+        address = found.address()
+    }
+    if (address < 0 || address >= config.memorySize()) {
+        diagnostics.add(errorAt("ASM008", operand.line(), operand.column(),
+            args3("" + address, "" + config.memorySize(), "" + (config.memorySize() - 1))))
+        return 0
+    }
+    return address
+}

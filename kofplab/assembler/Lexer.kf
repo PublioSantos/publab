@@ -1,0 +1,183 @@
+package kofplab.assembler
+
+import kofplab.machine
+
+// KofASM lexer. One instruction per line, so the end of a line is a real
+// token. A comment starts with ';' or '//'.
+//
+// Token kinds: ident, number, comma, colon, lbracket, rbracket, eol, eof.
+
+record Token(String kind, String text, Long value, Int line, Int column)
+
+record LexResult(List<Token> tokens, List<Diagnostic> diagnostics)
+
+List<Token> emptyTokens() {
+    var l: List<kofplab.assembler.Token> = listOf()
+    return l
+}
+
+Bool isDigitChar(Char c) {
+    return c >= '0' && c <= '9'
+}
+
+Bool isLetterChar(Char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '.'
+}
+
+Bool isIdentChar(Char c) {
+    return isLetterChar(c) || isDigitChar(c)
+}
+
+Bool isHexDigitChar(Char c) {
+    return isDigitChar(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+}
+
+Int hexDigitValue(Char c) {
+    if (isDigitChar(c)) {
+        return (c as Int) - ('0' as Int)
+    } else if (c >= 'a' && c <= 'f') {
+        return 10 + (c as Int) - ('a' as Int)
+    } else {
+        return 10 + (c as Int) - ('A' as Int)
+    }
+}
+
+// The widest literal KofASM accepts before the word-size check (ASM005) takes
+// over. Keeps a long input from overflowing silently.
+Long literalCeiling() {
+    return 4294967295 as Long
+}
+
+record NumberScan(Bool ok, Long value, String text, Int next)
+
+// Scans a number at `start`: 42, -42, 0x2A, 0b101010.
+NumberScan scanNumber(String source, Int start) {
+    val n = source.length
+    var i = start
+    var negative = false
+    if (source.charAt(i) == '-') {
+        negative = true
+        i = i + 1
+    }
+    var base = 10
+    if (i + 1 < n && source.charAt(i) == '0') {
+        val marker = source.charAt(i + 1)
+        if (marker == 'x' || marker == 'X') {
+            base = 16
+            i = i + 2
+        } else if (marker == 'b' || marker == 'B') {
+            base = 2
+            i = i + 2
+        }
+    }
+    var digits = 0
+    var malformed = false
+    var value: Long = 0 as Long
+    var scanning = true
+    while (scanning && i < n) {
+        val c = source.charAt(i)
+        if (!isIdentChar(c)) {
+            scanning = false
+        } else {
+            var digitValue = -1
+            if (base == 16 && isHexDigitChar(c)) {
+                digitValue = hexDigitValue(c)
+            } else if (base == 10 && isDigitChar(c)) {
+                digitValue = hexDigitValue(c)
+            } else if (base == 2 && (c == '0' || c == '1')) {
+                digitValue = hexDigitValue(c)
+            }
+            if (digitValue < 0) {
+                // 0x2G, 12abc: an identifier character that is not a digit of
+                // this base makes the literal malformed, not a new token.
+                malformed = true
+            } else {
+                value = value * (base as Long) + (digitValue as Long)
+                if (value > literalCeiling()) { malformed = true }
+            }
+            digits = digits + 1
+            i = i + 1
+        }
+    }
+    val text = source.substring(start, i)
+    if (digits == 0 || malformed) {
+        return NumberScan(false, 0 as Long, text, i)
+    }
+    if (negative) {
+        return NumberScan(true, (0 as Long) - value, text, i)
+    }
+    return NumberScan(true, value, text, i)
+}
+
+Int skipToLineEnd(String source, Int from) {
+    val n = source.length
+    var i = from
+    while (i < n && source.charAt(i) != '\n') { i = i + 1 }
+    return i
+}
+
+Bool startsLineComment(String source, Int i) {
+    val n = source.length
+    if (source.charAt(i) == ';') { return true }
+    return source.charAt(i) == '/' && i + 1 < n && source.charAt(i + 1) == '/'
+}
+
+Bool startsNumber(String source, Int i) {
+    val n = source.length
+    val c = source.charAt(i)
+    if (isDigitChar(c)) { return true }
+    return c == '-' && i + 1 < n && isDigitChar(source.charAt(i + 1))
+}
+
+LexResult lexSource(String source) {
+    var tokens = emptyTokens()
+    var diagnostics = emptyDiagnostics()
+    val n = source.length
+    var i = 0
+    var line = 1
+    var lineStart = 0
+    while (i < n) {
+        val c = source.charAt(i)
+        val column = i - lineStart + 1
+        if (c == '\n') {
+            tokens.add(Token("eol", "", 0 as Long, line, column))
+            i = i + 1
+            line = line + 1
+            lineStart = i
+        } else if (c == ' ' || c == '\t' || c == '\r') {
+            i = i + 1
+        } else if (startsLineComment(source, i)) {
+            i = skipToLineEnd(source, i)
+        } else if (c == ',') {
+            tokens.add(Token("comma", ",", 0 as Long, line, column))
+            i = i + 1
+        } else if (c == ':') {
+            tokens.add(Token("colon", ":", 0 as Long, line, column))
+            i = i + 1
+        } else if (c == '[') {
+            tokens.add(Token("lbracket", "[", 0 as Long, line, column))
+            i = i + 1
+        } else if (c == ']') {
+            tokens.add(Token("rbracket", "]", 0 as Long, line, column))
+            i = i + 1
+        } else if (startsNumber(source, i)) {
+            val scan = scanNumber(source, i)
+            if (scan.ok()) {
+                tokens.add(Token("number", scan.text(), scan.value(), line, column))
+            } else {
+                diagnostics.add(errorAt("ASM011", line, column, args1(scan.text())))
+            }
+            i = scan.next()
+        } else if (isLetterChar(c)) {
+            var j = i
+            while (j < n && isIdentChar(source.charAt(j))) { j = j + 1 }
+            tokens.add(Token("ident", source.substring(i, j), 0 as Long, line, column))
+            i = j
+        } else {
+            diagnostics.add(errorAt("ASM009", line, column, args1("" + c)))
+            i = i + 1
+        }
+    }
+    tokens.add(Token("eof", "", 0 as Long, line, n - lineStart + 1))
+    return LexResult(tokens, diagnostics)
+}

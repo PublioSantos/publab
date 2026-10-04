@@ -1,0 +1,127 @@
+package kofplab.assembler
+
+// A diagnostic carries a CODE and its arguments, never a finished sentence:
+// the text is produced on demand in the requested language (section 40).
+// Nothing translatable is written inside the lexer, parser or assembler.
+
+record Diagnostic(String severity, String code, Int line, Int column, List<String> args)
+
+// Empty list helpers: a `List<T>` annotation with a package-local record type
+// is not qualified by the compiler and trips SEM010 (kof 0.5.0-beta), so the
+// qualified name is spelled out once, here.
+List<Diagnostic> emptyDiagnostics() {
+    var l: List<kofplab.assembler.Diagnostic> = listOf()
+    return l
+}
+
+Diagnostic errorAt(String code, Int line, Int column, List<String> args) {
+    return Diagnostic("error", code, line, column, args)
+}
+
+List<String> noArgs() {
+    var l: List<String> = listOf()
+    return l
+}
+
+List<String> args1(String a) {
+    return listOf(a)
+}
+
+List<String> args2(String a, String b) {
+    return listOf(a, b)
+}
+
+List<String> args3(String a, String b, String c) {
+    return listOf(a, b, c)
+}
+
+List<String> args4(String a, String b, String c, String d) {
+    return listOf(a, b, c, d)
+}
+
+Bool hasErrors(List<Diagnostic> diagnostics) {
+    for (var d in diagnostics) {
+        if (d.severity() == "error") { return true }
+    }
+    return false
+}
+
+String replaceAll(String text, String needle, String replacement) {
+    var out = ""
+    var rest = text
+    while (rest.contains(needle)) {
+        val index = rest.indexOf(needle)
+        out = out + rest.substring(0, index) + replacement
+        rest = rest.substring(index + needle.length)
+    }
+    return out + rest
+}
+
+List<String> splitOn(String text, String separator) {
+    var parts: List<String> = listOf()
+    var rest = text
+    while (rest.contains(separator)) {
+        val index = rest.indexOf(separator)
+        parts.add(rest.substring(0, index))
+        rest = rest.substring(index + separator.length)
+    }
+    parts.add(rest)
+    return parts
+}
+
+// An argument may be a language-neutral token instead of final text, so that
+// nothing translatable is built where the diagnostic is raised (section 40).
+// "form:2,3" becomes "register, immediate / register, register".
+String expandArg(String arg, String language) {
+    if (arg.startsWith("form:")) {
+        var out = ""
+        for (var id in splitOn(arg.substring(5), ",")) {
+            if (out.length > 0) { out = out + " / " }
+            out = out + formDescriptionIn(Integer.parseInt(id), language)
+        }
+        return out
+    }
+    return arg
+}
+
+List<String> expandArgs(List<String> args, String language) {
+    var out: List<String> = listOf()
+    for (var a in args) { out.add(expandArg(a, language)) }
+    return out
+}
+
+String fillTemplate(String template, List<String> args) {
+    var out = template
+    var i = 0
+    while (i < args.size) {
+        out = replaceAll(out, "{" + i + "}", args.get(i))
+        i++
+    }
+    return out
+}
+
+// "Line 4, column 11: error [ASM002]: invalid operand for ADD"
+// "  Expected register, immediate."
+String renderDiagnostic(Diagnostic d, String language) {
+    var head = lineWord(language) + " " + d.line()
+    if (d.column() > 0) {
+        head = head + ", " + columnWord(language) + " " + d.column()
+    }
+    head = head + ": " + severityWord(d.severity(), language) + " [" + d.code() + "]: "
+    val args = expandArgs(d.args(), language)
+    head = head + fillTemplate(messageTemplate(d.code(), language), args)
+    val hint = fillTemplate(hintTemplate(d.code(), language), args)
+    if (hint.length > 0) {
+        return head + "\n  " + hint
+    }
+    return head
+}
+
+String renderDiagnostics(List<Diagnostic> diagnostics, String language) {
+    var out = ""
+    for (var d in diagnostics) {
+        if (out.length > 0) { out = out + "\n" }
+        out = out + renderDiagnostic(d, language)
+    }
+    return out
+}

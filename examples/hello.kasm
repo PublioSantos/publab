@@ -1,0 +1,9 @@
+; hello.kasm — the smallest complete KofASM program.
+;
+; The KofVM has no character output: PRINT shows the VALUE of a register
+; (section 13 of the specification), so this program prints 1, not a greeting.
+; Run it with Step to watch PC move from 0x0000 to 0x0003 to 0x0005.
+
+    LOAD A, 1
+    PRINT A
+    HALT

@@ -1,0 +1,261 @@
+package kofplab.assembler
+
+import kofplab.machine
+
+// KofASM parser. Produces the shape of each line — mnemonic plus operands —
+// and the label definitions. It does NOT decide whether the instruction
+// exists: that is the assembler's job, against the opcode table.
+//
+// Operand kinds: reg, imm, mem ([address]), memlabel ([label]), label.
+
+record Operand(String kind, Int reg, Long imm, String label, Int line, Int column)
+
+record ParsedInstruction(String mnemonic, List<Operand> operands, Int line, Int column)
+
+// `instructionIndex` is the index of the instruction the label points at.
+// A label on the last line points one past the end, which is a valid address.
+record LabelDef(String name, Int instructionIndex, Int line, Int column)
+
+record ParseResult(List<ParsedInstruction> instructions, List<LabelDef> labels,
+                   List<Diagnostic> diagnostics)
+
+List<Operand> emptyOperands() {
+    var l: List<kofplab.assembler.Operand> = listOf()
+    return l
+}
+
+List<ParsedInstruction> emptyInstructions() {
+    var l: List<kofplab.assembler.ParsedInstruction> = listOf()
+    return l
+}
+
+List<LabelDef> emptyLabels() {
+    var l: List<kofplab.assembler.LabelDef> = listOf()
+    return l
+}
+
+Operand registerOperand(Int id, Int line, Int column) {
+    return Operand("reg", id, 0 as Long, "", line, column)
+}
+
+Operand immediateOperand(Long value, Int line, Int column) {
+    return Operand("imm", 0, value, "", line, column)
+}
+
+Operand memoryOperand(Long address, Int line, Int column) {
+    return Operand("mem", 0, address, "", line, column)
+}
+
+Operand memoryLabelOperand(String name, Int line, Int column) {
+    return Operand("memlabel", 0, 0 as Long, name, line, column)
+}
+
+Operand labelOperand(String name, Int line, Int column) {
+    return Operand("label", 0, 0 as Long, name, line, column)
+}
+
+class Parser {
+    List<Token> tokens
+    Int position
+    List<ParsedInstruction> instructions
+    List<LabelDef> labels
+    List<Diagnostic> diagnostics
+
+    constructor(List<Token> tokens) {
+        this.tokens = tokens
+        this.position = 0
+        this.instructions = emptyInstructions()
+        this.labels = emptyLabels()
+        this.diagnostics = emptyDiagnostics()
+    }
+
+    Token peek() {
+        return this.tokens.get(this.position)
+    }
+
+    Token peekAhead(Int offset) {
+        val index = this.position + offset
+        if (index >= this.tokens.size) { return this.tokens.get(this.tokens.size - 1) }
+        return this.tokens.get(index)
+    }
+
+    Token advance() {
+        val token = this.peek()
+        if (this.position < this.tokens.size - 1) { this.position = this.position + 1 }
+        return token
+    }
+
+    Bool atEnd() {
+        return this.peek().kind() == "eof"
+    }
+
+    // After an error, drop the rest of the line so one mistake produces one
+    // diagnostic instead of a cascade.
+    void skipLine() {
+        while (this.peek().kind() != "eol" && this.peek().kind() != "eof") { this.advance() }
+        if (this.peek().kind() == "eol") { this.advance() }
+    }
+
+    void reportExpected(String expected, Token found) {
+        this.diagnostics.add(errorAt("ASM012", found.line(), found.column(),
+            args2(expected, describeToken(found))))
+    }
+
+    void parseProgram() {
+        while (!this.atEnd()) {
+            if (this.peek().kind() == "eol") {
+                this.advance()
+            } else if (this.peek().kind() == "ident" && this.peekAhead(1).kind() == "colon") {
+                val name = this.advance()
+                this.advance()
+                this.labels.add(LabelDef(name.text(), this.instructions.size,
+                    name.line(), name.column()))
+            } else if (this.peek().kind() == "ident") {
+                this.parseInstruction()
+            } else {
+                this.reportExpected("instruction or label", this.peek())
+                this.skipLine()
+            }
+        }
+    }
+
+    void parseInstruction() {
+        val mnemonic = this.advance()
+        var operands = emptyOperands()
+        var expectOperand = true
+        var failed = false
+        while (!failed && this.peek().kind() != "eol" && this.peek().kind() != "eof") {
+            if (!expectOperand) {
+                if (this.peek().kind() == "comma") {
+                    this.advance()
+                    expectOperand = true
+                } else {
+                    this.reportExpected("',' or end of line", this.peek())
+                    this.skipLine()
+                    failed = true
+                }
+            } else {
+                val parsed = this.parseOperand()
+                if (parsed.ok()) {
+                    operands.add(parsed.operand())
+                    expectOperand = false
+                } else {
+                    this.skipLine()
+                    failed = true
+                }
+            }
+        }
+        if (!failed) {
+            if (expectOperand && operands.size > 0) {
+                // A trailing comma with nothing after it.
+                this.reportExpected("operand", this.peek())
+            } else {
+                this.instructions.add(ParsedInstruction(mnemonic.text(), operands,
+                    mnemonic.line(), mnemonic.column()))
+            }
+            if (this.peek().kind() == "eol") { this.advance() }
+        }
+    }
+
+    OperandParse parseOperand() {
+        val token = this.peek()
+        if (token.kind() == "number") {
+            this.advance()
+            return OperandParse(true, immediateOperand(token.value(), token.line(), token.column()))
+        }
+        if (token.kind() == "ident") {
+            this.advance()
+            val found = lookupRegister(token.text())
+            if (found.found()) {
+                return OperandParse(true, registerOperand(found.id(), token.line(), token.column()))
+            }
+            if (isAdvancedRegisterName(token.text())) {
+                // X, Y, SP and FP are reserved for Advanced Mode, so they are
+                // never read as a label name.
+                this.diagnostics.add(errorAt("ASM014", token.line(), token.column(),
+                    args1(token.text().toUpperCase())))
+                return OperandParse(false, labelOperand("", token.line(), token.column()))
+            }
+            return OperandParse(true, labelOperand(token.text(), token.line(), token.column()))
+        }
+        if (token.kind() == "lbracket") {
+            return this.parseMemoryOperand()
+        }
+        this.reportExpected("operand", token)
+        return OperandParse(false, labelOperand("", token.line(), token.column()))
+    }
+
+    OperandParse parseMemoryOperand() {
+        val open = this.advance()
+        val inner = this.peek()
+        var operand = memoryOperand(0 as Long, open.line(), open.column())
+        if (inner.kind() == "number") {
+            this.advance()
+            operand = memoryOperand(inner.value(), open.line(), open.column())
+        } else if (inner.kind() == "ident") {
+            this.advance()
+            if (isAdvancedRegisterName(inner.text())) {
+                this.diagnostics.add(errorAt("ASM014", inner.line(), inner.column(),
+                    args1(inner.text().toUpperCase())))
+                return OperandParse(false, operand)
+            }
+            operand = memoryLabelOperand(inner.text(), open.line(), open.column())
+        } else {
+            this.reportExpected("address or label", inner)
+            return OperandParse(false, operand)
+        }
+        if (this.peek().kind() != "rbracket") {
+            this.reportExpected("']'", this.peek())
+            return OperandParse(false, operand)
+        }
+        this.advance()
+        return OperandParse(true, operand)
+    }
+}
+
+record OperandParse(Bool ok, Operand operand)
+
+String describeToken(Token token) {
+    if (token.kind() == "eol") { return "end of line" }
+    if (token.kind() == "eof") { return "end of file" }
+    return "'" + token.text() + "'"
+}
+
+ParseResult parseTokens(List<Token> tokens) {
+    var parser = Parser(tokens)
+    parser.parseProgram()
+    return ParseResult(parser.instructions, parser.labels, parser.diagnostics)
+}
+
+// Which encoded form a sequence of operands describes.
+record FormGuess(Bool ok, Int form)
+
+FormGuess formFromOperands(List<Operand> operands) {
+    if (operands.size == 0) { return FormGuess(true, formNone()) }
+    if (operands.size == 1) {
+        val kind = operands.get(0).kind()
+        if (kind == "reg") { return FormGuess(true, formReg()) }
+        if (kind == "imm" || kind == "label") { return FormGuess(true, formAddr()) }
+        return FormGuess(false, formNone())
+    }
+    if (operands.size == 2) {
+        val first = operands.get(0).kind()
+        val second = operands.get(1).kind()
+        if (first == "reg" && second == "imm") { return FormGuess(true, formRegImm()) }
+        if (first == "reg" && second == "reg") { return FormGuess(true, formRegReg()) }
+        if (first == "reg" && (second == "mem" || second == "memlabel")) {
+            return FormGuess(true, formRegAddr())
+        }
+        if ((first == "mem" || first == "memlabel") && second == "reg") {
+            return FormGuess(true, formAddrReg())
+        }
+        return FormGuess(false, formNone())
+    }
+    return FormGuess(false, formNone())
+}
+
+Int formOperandCount(Int form) {
+    if (form == formNone()) { return 0 }
+    if (form == formReg() || form == formAddr()) { return 1 }
+    return 2
+}

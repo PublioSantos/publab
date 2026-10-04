@@ -1,0 +1,96 @@
+package tests
+
+import kofplab.machine
+import kofplab.assembler
+
+List<Token> tokensOf(String source) {
+    return lexSource(source).tokens()
+}
+
+test "a simple instruction becomes ident ident comma number" {
+    val t = tokensOf("LOAD A, 250")
+    assert(t.size == 5, "four tokens plus eof")
+    assert(t.get(0).kind() == "ident" && t.get(0).text() == "LOAD")
+    assert(t.get(1).kind() == "ident" && t.get(1).text() == "A")
+    assert(t.get(2).kind() == "comma")
+    assert(t.get(3).kind() == "number" && t.get(3).value() == 250 as Long)
+    assert(t.get(4).kind() == "eof")
+}
+
+test "line and column are tracked" {
+    val t = tokensOf("HALT\n  PRINT A")
+    assert(t.get(0).line() == 1 && t.get(0).column() == 1)
+    assert(t.get(1).kind() == "eol")
+    assert(t.get(2).text() == "PRINT")
+    assert(t.get(2).line() == 2)
+    assert(t.get(2).column() == 3, "two spaces of indentation")
+}
+
+test "comments are skipped, both styles" {
+    val t = tokensOf("; a comment\nHALT ; trailing\n// another\nHALT")
+    var idents = 0
+    for (var tok in t) {
+        if (tok.kind() == "ident") { idents = idents + 1 }
+    }
+    assert(idents == 2)
+    assert(lexSource("; only a comment").diagnostics().size == 0)
+}
+
+test "decimal, hexadecimal and binary literals" {
+    assert(tokensOf("42").get(0).value() == 42 as Long)
+    assert(tokensOf("0x2A").get(0).value() == 42 as Long)
+    assert(tokensOf("0X2a").get(0).value() == 42 as Long)
+    assert(tokensOf("0b101010").get(0).value() == 42 as Long)
+    assert(tokensOf("0").get(0).value() == 0 as Long)
+}
+
+test "negative literals" {
+    val t = tokensOf("LOAD A, -6")
+    assert(t.get(3).kind() == "number")
+    assert(t.get(3).value() == (0 as Long) - (6 as Long))
+}
+
+test "brackets, colon and label syntax" {
+    val t = tokensOf("loop: STORE [0x10], A")
+    assert(t.get(0).kind() == "ident" && t.get(0).text() == "loop")
+    assert(t.get(1).kind() == "colon")
+    assert(t.get(3).kind() == "lbracket")
+    assert(t.get(4).value() == 16 as Long)
+    assert(t.get(5).kind() == "rbracket")
+}
+
+test "a malformed number is reported with its position" {
+    val r = lexSource("LOAD A, 0x2G")
+    assert(r.diagnostics().size == 1)
+    val d = r.diagnostics().get(0)
+    assert(d.code() == "ASM011")
+    assert(d.line() == 1 && d.column() == 9)
+    assert(renderDiagnostic(d, "en").contains("malformed number '0x2G'"))
+    assert(renderDiagnostic(d, "pt").contains("número malformado '0x2G'"))
+}
+
+test "a number too large to represent is rejected, not wrapped" {
+    val r = lexSource("LOAD A, 99999999999")
+    assert(r.diagnostics().size == 1)
+    assert(r.diagnostics().get(0).code() == "ASM011")
+}
+
+test "an unexpected character is reported" {
+    val r = lexSource("LOAD A, 250 @")
+    assert(r.diagnostics().size == 1)
+    assert(r.diagnostics().get(0).code() == "ASM009")
+    assert(r.diagnostics().get(0).column() == 13)
+    assert(renderDiagnostic(r.diagnostics().get(0), "en").contains("unexpected character '@'"))
+}
+
+test "diagnostics render in English and Portuguese from the same code" {
+    val d = errorAt("ASM005", 3, 9, args4("300", "8", "-128", "255"))
+    val en = renderDiagnostic(d, "en")
+    val pt = renderDiagnostic(d, "pt")
+    assert(en.contains("Line 3, column 9: error [ASM005]"))
+    assert(en.contains("immediate 300 does not fit in a 8-bit word"))
+    assert(en.contains("Valid range for 8 bits: -128 to 255."))
+    assert(pt.contains("Linha 3, coluna 9: erro [ASM005]"))
+    assert(pt.contains("não cabe em uma palavra de 8 bits"))
+    assert(pt.contains("Faixa válida para 8 bits: -128 a 255."))
+}

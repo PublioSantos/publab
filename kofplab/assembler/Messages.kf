@@ -1,0 +1,128 @@
+package kofplab.assembler
+
+// The message catalogue. Adding a language means adding a branch here and
+// nowhere else; the rest of the assembler only ever produces codes.
+
+Bool isPortuguese(String language) {
+    return language == "pt" || language == "pt_BR" || language == "pt-BR"
+}
+
+String lineWord(String language) {
+    if (isPortuguese(language)) { return "Linha" }
+    return "Line"
+}
+
+String columnWord(String language) {
+    if (isPortuguese(language)) { return "coluna" }
+    return "column"
+}
+
+String severityWord(String severity, String language) {
+    if (isPortuguese(language)) {
+        if (severity == "warning") { return "aviso" }
+        return "erro"
+    }
+    return severity
+}
+
+String basicSetSentence(String language) {
+    if (isPortuguese(language)) {
+        return "As fases 1-2 implementam o conjunto do Basic Mode: LOAD, STORE, ADD, SUB, AND, OR, XOR, NOT, JMP, JZ, JC, PRINT, HALT."
+    }
+    return "Phases 1-2 implement the Basic Mode set: LOAD, STORE, ADD, SUB, AND, OR, XOR, NOT, JMP, JZ, JC, PRINT, HALT."
+}
+
+String messageTemplate(String code, String language) {
+    if (isPortuguese(language)) { return messagePt(code) }
+    return messageEn(code)
+}
+
+String hintTemplate(String code, String language) {
+    if (isPortuguese(language)) { return hintPt(code) }
+    return hintEn(code)
+}
+
+String messageEn(String code) {
+    if (code == "ASM001") { return "unknown instruction '{0}'" }
+    if (code == "ASM002") { return "invalid operand for {0}" }
+    if (code == "ASM003") { return "{0} takes {1} operand(s), but got {2}" }
+    if (code == "ASM004") { return "unknown register '{0}'" }
+    if (code == "ASM005") { return "immediate {0} does not fit in a {1}-bit word" }
+    if (code == "ASM006") { return "undefined label '{0}'" }
+    if (code == "ASM007") { return "label '{0}' is already defined (line {1})" }
+    if (code == "ASM008") { return "address {0} is outside this machine's memory" }
+    if (code == "ASM009") { return "unexpected character '{0}'" }
+    if (code == "ASM010") { return "'{0}' belongs to Advanced Mode, which is not implemented yet" }
+    if (code == "ASM011") { return "malformed number '{0}'" }
+    if (code == "ASM012") { return "expected {0}, found {1}" }
+    if (code == "ASM013") { return "the program needs {0} bytes but this machine has {1}" }
+    if (code == "ASM014") { return "register '{0}' belongs to Advanced Mode, which is not implemented yet" }
+    return "diagnostic " + code
+}
+
+String hintEn(String code) {
+    if (code == "ASM001") { return "See the instruction list in docs/kofasm.md." }
+    if (code == "ASM002") { return "Expected: {1}." }
+    if (code == "ASM003") { return "" }
+    if (code == "ASM004") { return "Basic Mode has the registers A, B, C and D." }
+    if (code == "ASM005") { return "Valid range for {1} bits: {2} to {3}." }
+    if (code == "ASM006") { return "Define it by writing '{0}:' on the line you want to jump to." }
+    if (code == "ASM007") { return "" }
+    if (code == "ASM008") { return "This machine has {1} bytes, so addresses run from 0 to {2}." }
+    if (code == "ASM009") { return "A comment starts with ';' or '//'." }
+    if (code == "ASM010") { return basicSetSentence("en") }
+    if (code == "ASM011") { return "Write a number as 42, 0x2A or 0b101010." }
+    if (code == "ASM012") { return "" }
+    if (code == "ASM013") { return "" }
+    if (code == "ASM014") { return "Basic Mode has the registers A, B, C and D." }
+    return ""
+}
+
+String messagePt(String code) {
+    if (code == "ASM001") { return "instrução desconhecida '{0}'" }
+    if (code == "ASM002") { return "operando inválido para {0}" }
+    if (code == "ASM003") { return "{0} recebe {1} operando(s), mas veio {2}" }
+    if (code == "ASM004") { return "registrador desconhecido '{0}'" }
+    if (code == "ASM005") { return "o imediato {0} não cabe em uma palavra de {1} bits" }
+    if (code == "ASM006") { return "label não definido '{0}'" }
+    if (code == "ASM007") { return "o label '{0}' já foi definido (linha {1})" }
+    if (code == "ASM008") { return "o endereço {0} está fora da memória desta máquina" }
+    if (code == "ASM009") { return "caractere inesperado '{0}'" }
+    if (code == "ASM010") { return "'{0}' pertence ao Advanced Mode, que ainda não está implementado" }
+    if (code == "ASM011") { return "número malformado '{0}'" }
+    if (code == "ASM012") { return "esperado {0}, encontrado {1}" }
+    if (code == "ASM013") { return "o programa precisa de {0} bytes, mas esta máquina tem {1}" }
+    if (code == "ASM014") { return "o registrador '{0}' pertence ao Advanced Mode, que ainda não está implementado" }
+    return "diagnóstico " + code
+}
+
+String hintPt(String code) {
+    if (code == "ASM001") { return "Veja a lista de instruções em docs/kofasm.pt_BR.md." }
+    if (code == "ASM002") { return "Esperado: {1}." }
+    if (code == "ASM003") { return "" }
+    if (code == "ASM004") { return "O Basic Mode tem os registradores A, B, C e D." }
+    if (code == "ASM005") { return "Faixa válida para {1} bits: {2} a {3}." }
+    if (code == "ASM006") { return "Defina-o escrevendo '{0}:' na linha para onde quer saltar." }
+    if (code == "ASM007") { return "" }
+    if (code == "ASM008") { return "Esta máquina tem {1} bytes, então os endereços vão de 0 a {2}." }
+    if (code == "ASM009") { return "Um comentário começa com ';' ou '//'." }
+    if (code == "ASM010") { return basicSetSentence("pt") }
+    if (code == "ASM011") { return "Escreva um número como 42, 0x2A ou 0b101010." }
+    if (code == "ASM012") { return "" }
+    if (code == "ASM013") { return "" }
+    if (code == "ASM014") { return "O Basic Mode tem os registradores A, B, C e D." }
+    return ""
+}
+
+// Operand forms described in the user's language, for ASM002.
+String formDescriptionIn(Int form, String language) {
+    if (!isPortuguese(language)) { return formDescription(form) }
+    if (form == formNone()) { return "nenhum operando" }
+    if (form == formReg()) { return "registrador" }
+    if (form == formRegImm()) { return "registrador, imediato" }
+    if (form == formRegReg()) { return "registrador, registrador" }
+    if (form == formRegAddr()) { return "registrador, [endereço]" }
+    if (form == formAddrReg()) { return "[endereço], registrador" }
+    if (form == formAddr()) { return "endereço ou label" }
+    return "desconhecido"
+}

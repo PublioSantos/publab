@@ -1,0 +1,97 @@
+package tests
+
+import kofplab.machine
+import kofplab.assembler
+
+// The Golden Test of the specification (sections 18 and 48), from KofASM
+// source through the assembler into the real machine.
+//
+//   LOAD A, 250
+//   LOAD B, 20
+//   ADD A, B
+//   PRINT A
+//   HALT
+//
+// Phases 1-2 implement and validate KofVM-8. The 16- and 32-bit expectations
+// of section 18 belong to phases 3-4, when the suite is run across all three
+// word sizes; the core is already parameterized for it (see MachineConfig).
+
+String goldenSource() {
+    return "LOAD A, 250\nLOAD B, 20\nADD A, B\nPRINT A\nHALT\n"
+}
+
+Machine assembledGoldenMachine() {
+    val assembled = assembleSource(goldenSource(), kofvm8())
+    assert(assembled.ok(), renderDiagnostics(assembled.diagnostics(), "en"))
+    var machine = Machine(kofvm8())
+    machine.load(assembled.image())
+    return machine
+}
+
+test "GOLDEN: KofVM-8 stores 14 and sets Carry" {
+    var machine = assembledGoldenMachine()
+    machine.run(100)
+    assert(statusName(machine.status) == "HALTED")
+    assert(machine.registers.read(0) == 14 as Long, "A = 14")
+    assert(machine.flags.carry, "C = 1")
+    assert(machine.flags.zero == false, "Z = 0")
+    assert(machine.flags.negative == false, "N = 0")
+    assert(machine.flags.overflow == false, "O = 0")
+    assert(machine.output.get(0) == "14", "PRINT A showed 14")
+}
+
+test "GOLDEN: the state before and after the ADD" {
+    var machine = assembledGoldenMachine()
+    machine.step()
+    machine.step()
+    // Before the ADD.
+    assert(machine.currentInstructionText() == "ADD A, B")
+    assert(machine.registers.read(0) == 250 as Long, "A = 250")
+    assert(machine.registers.read(1) == 20 as Long, "B = 20")
+    assert(machine.flags.carry == false)
+    machine.step()
+    // After the ADD.
+    assert(machine.registers.read(0) == 14 as Long, "A = 14")
+    assert(machine.registers.read(1) == 20 as Long, "B unchanged")
+    assert(machine.flags.carry, "C = 1")
+    assert(machine.flags.zero == false)
+    assert(machine.flags.negative == false)
+    assert(machine.flags.overflow == false)
+}
+
+test "GOLDEN: the values a laboratory would show for A" {
+    var machine = assembledGoldenMachine()
+    machine.run(100)
+    val a = machine.registers.read(0)
+    assert("" + a == "14", "DEC 14")
+    assert(wordToHex(a, 8) == "0E", "HEX 0E")
+    assert(wordToBin(a, 8) == "00001110", "BIN 00001110")
+}
+
+test "GOLDEN: the snapshot a UI would render" {
+    var machine = assembledGoldenMachine()
+    machine.run(100)
+    val state = machine.snapshot()
+    assert(state.machineName() == "KofVM-8")
+    assert(state.wordSize() == 8)
+    assert(state.registers().get(0) == 14 as Long)
+    assert(state.carry() && state.zero() == false
+        && state.negative() == false && state.overflow() == false)
+    assert(state.cycles() == 5)
+    assert(state.output().size == 1 && state.output().get(0) == "14")
+    assert(statusName(state.status()) == "HALTED")
+}
+
+test "GOLDEN: the program in memory is what the assembler emitted" {
+    val assembled = assembleSource(goldenSource(), kofvm8())
+    var machine = assembledGoldenMachine()
+    var i = 0
+    while (i < assembled.byteCount()) {
+        assert(machine.memory.readByte(i) == assembled.image().get(i),
+            "byte " + i + " of the image is in memory")
+        i = i + 1
+    }
+    // The first line of the memory view of section 26.
+    assert(toHex(machine.memory.readByte(0) as Long, 2) == "10")
+    assert(toHex(machine.memory.readByte(2) as Long, 2) == "FA")
+}

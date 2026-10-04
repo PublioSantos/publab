@@ -1,0 +1,100 @@
+package tests
+
+import kofplab.machine
+import kofplab.assembler
+
+ParseResult parseSource(String source) {
+    return parseTokens(lexSource(source).tokens())
+}
+
+test "instructions and their operand shapes" {
+    val r = parseSource("LOAD A, 250\nADD A, B\nNOT C\nHALT")
+    assert(r.diagnostics().size == 0)
+    assert(r.instructions().size == 4)
+    val load = r.instructions().get(0)
+    assert(load.mnemonic() == "LOAD")
+    assert(load.operands().size == 2)
+    assert(load.operands().get(0).kind() == "reg" && load.operands().get(0).reg() == 0)
+    assert(load.operands().get(1).kind() == "imm" && load.operands().get(1).imm() == 250 as Long)
+    assert(r.instructions().get(1).operands().get(1).kind() == "reg")
+    assert(r.instructions().get(3).operands().size == 0)
+}
+
+test "a label on its own line points at the next instruction" {
+    val r = parseSource("LOAD A, 10\nloop:\nSUB A, 1\nJZ loop")
+    assert(r.labels().size == 1)
+    assert(r.labels().get(0).name() == "loop")
+    assert(r.labels().get(0).instructionIndex() == 1, "the SUB")
+    assert(r.instructions().size == 3)
+}
+
+test "a label sharing a line with an instruction" {
+    val r = parseSource("loop: SUB A, 1")
+    assert(r.labels().size == 1)
+    assert(r.labels().get(0).instructionIndex() == 0)
+    assert(r.instructions().size == 1)
+    assert(r.instructions().get(0).mnemonic() == "SUB")
+}
+
+test "a label after the last instruction is still a definition" {
+    val r = parseSource("HALT\ndone:")
+    assert(r.instructions().size == 1)
+    assert(r.labels().get(0).instructionIndex() == 1, "one past the end")
+}
+
+test "memory operands, numeric and by label" {
+    val r = parseSource("STORE [0x10], A\nLOAD B, [total]")
+    assert(r.diagnostics().size == 0)
+    val store = r.instructions().get(0)
+    assert(store.operands().get(0).kind() == "mem")
+    assert(store.operands().get(0).imm() == 16 as Long)
+    assert(store.operands().get(1).kind() == "reg")
+    val load = r.instructions().get(1)
+    assert(load.operands().get(1).kind() == "memlabel")
+    assert(load.operands().get(1).label() == "total")
+}
+
+test "a jump target is a label operand" {
+    val r = parseSource("JMP loop")
+    assert(r.instructions().get(0).operands().get(0).kind() == "label")
+    assert(r.instructions().get(0).operands().get(0).label() == "loop")
+}
+
+test "operand shapes map to encoded forms" {
+    assert(formFromOperands(parseSource("HALT").instructions().get(0).operands()).form() == formNone())
+    assert(formFromOperands(parseSource("NOT A").instructions().get(0).operands()).form() == formReg())
+    assert(formFromOperands(parseSource("LOAD A, 1").instructions().get(0).operands()).form() == formRegImm())
+    assert(formFromOperands(parseSource("ADD A, B").instructions().get(0).operands()).form() == formRegReg())
+    assert(formFromOperands(parseSource("LOAD A, [2]").instructions().get(0).operands()).form() == formRegAddr())
+    assert(formFromOperands(parseSource("STORE [2], A").instructions().get(0).operands()).form() == formAddrReg())
+    assert(formFromOperands(parseSource("JMP loop").instructions().get(0).operands()).form() == formAddr())
+}
+
+test "a missing comma is reported once, not as a cascade" {
+    val r = parseSource("LOAD A 250\nHALT")
+    assert(r.diagnostics().size == 1)
+    assert(r.diagnostics().get(0).code() == "ASM012")
+    assert(r.instructions().size == 1, "the good line after it still parsed")
+    assert(r.instructions().get(0).mnemonic() == "HALT")
+}
+
+test "an unclosed bracket is reported" {
+    val r = parseSource("STORE [0x10, A")
+    assert(r.diagnostics().size == 1)
+    assert(r.diagnostics().get(0).code() == "ASM012")
+    assert(renderDiagnostic(r.diagnostics().get(0), "en").contains("expected ']'"))
+}
+
+test "advanced-mode registers are reserved, not treated as labels" {
+    val r = parseSource("LOAD X, 1")
+    assert(r.diagnostics().size == 1)
+    assert(r.diagnostics().get(0).code() == "ASM014")
+    assert(renderDiagnostic(r.diagnostics().get(0), "en").contains("'X' belongs to Advanced Mode"))
+    assert(renderDiagnostic(r.diagnostics().get(0), "pt").contains("pertence ao Advanced Mode"))
+}
+
+test "blank lines and comment-only lines produce nothing" {
+    val r = parseSource("\n; nothing\n\n// also nothing\nHALT\n")
+    assert(r.instructions().size == 1)
+    assert(r.diagnostics().size == 0)
+}
