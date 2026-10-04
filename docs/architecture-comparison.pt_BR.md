@@ -2,7 +2,7 @@
 
 # Comparação entre arquiteturas — modelo educacional
 
-## Situação: etapa A concluída
+## Situação: etapas A e B concluídas
 
 Esta página é o escopo completo para a fase 11, escrita antes de qualquer
 código, a mesma disciplina que as fases 8, 9 e 10 usaram. A fase 11 **não**
@@ -80,10 +80,15 @@ independentes ao longo das fases 9-10 exatamente por esse motivo (para que
 as idiossincrasias reais de cada arquitetura fiquem fiéis, não
 normalizadas), e a camada de UI mantém essa mesma independência.
 
-## Etapa B — a visão de comparação
+## Etapa B — a visão de comparação — concluída
 
-Depois que as três máquinas tiverem uma aba, a etapa B adiciona uma quarta
-visão: não uma máquina nova, uma leitura lado a lado das outras três. O
+Implementada como `publab/ui/Compare.kf`, seu próprio controlador (a mesma
+independência que as três abas da etapa A mantêm): um seletor de programa,
+os controles Montar e "Passo (as três)", e três painéis compactos por
+arquitetura — situação, saída, e a mesma explicação genérica que as abas
+da etapa A usam. Depois que as três máquinas tiverem uma aba, a etapa B
+adiciona uma quarta visão: não uma máquina nova, uma leitura lado a lado
+das outras três. O
 estudante escolhe um de um pequeno conjunto de **programas de comparação**
 — uma tarefa curta implementada três vezes, uma por arquitetura, em cada
 uma de suas próprias linguagens de montagem reais — e o laboratório roda as

@@ -125,7 +125,7 @@ abaixo é garantida pela suíte de testes.
 | 8 | Advanced Mode — X, Y, SP, FP, stack, shifts, saltos extras | **concluída** |
 | 9 | Modelo educacional do 8051 | etapas A-B concluídas (núcleo + assembler + P0, ainda sem UI) |
 | 10 | Modelo educacional do Cortex-M3 | etapas A-B concluídas (núcleo + assembler + GPIOA, ainda sem UI) |
-| 11 | Comparação entre arquiteturas | etapa A concluída (abas de UI do 8051 e Cortex-M3) |
+| 11 | Comparação entre arquiteturas | etapas A-B concluídas (abas de UI + visão de comparação) |
 | 12 | Export | não iniciada |
 
 Uma ausência nas fases 1-8 é deliberada, não pendência: não existe botão

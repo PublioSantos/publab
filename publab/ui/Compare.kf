@@ -1,0 +1,206 @@
+package publab.ui
+
+import publab.machine
+import publab.assembler
+import publab.i8051
+import publab.cm3
+
+// Phase 11 stage B — the comparison view. Not a fourth machine: three real,
+// independently assembled programs (one per architecture, in its own real
+// assembly) doing the same conceptual task, run Step-synchronized so the
+// documented real difference (docs/architecture-comparison.md) is something
+// the student watches happen rather than reads as prose.
+
+record ComparisonProgram(String pubvmSource, String i8051Source, String cm3Source)
+
+Int compareSetCount() { return 3 }
+
+// Set 0 — overflow/carry: the same kind of arithmetic, three flag
+// vocabularies. PubVM/8051 add past an 8-bit register; the Cortex-M3's
+// SUB/CMP shows its own real inversion (C = NOT borrow) instead of forcing
+// an artificial 32-bit overflow, since that is the actually-documented real
+// difference for this architecture (docs/cortex-m3.md).
+ComparisonProgram compareSetOverflow() {
+    return ComparisonProgram(
+        "LOAD A, 250\nLOAD B, 20\nADD A, B\nPRINT A\nHALT\n",
+        "MOV A, #250\nMOV B, #20\nADD A, B\nPRINT A\nHALT\n",
+        "MOV R0, #10\nMOV R1, #3\nSUB R2, R0, R1\nCMP R0, R1\nPRINT R2\nHALT\n")
+}
+
+// Set 1 — a subroutine call and return: three real calling conventions.
+ComparisonProgram compareSetCall() {
+    return ComparisonProgram(
+        "CALL sub\nPRINT A\nHALT\nsub:\nLOAD A, 7\nRET\n",
+        "CALL sub\nPRINT A\nHALT\nsub:\nMOV A, #7\nRET\n",
+        "BL sub\nPRINT R0\nHALT\nsub:\nMOV R0, #7\nBX LR\n")
+}
+
+// Set 2 — a register-wide value moved through a "port": the same PRINT-
+// visible round trip, three different register shapes (plain, banked, flat).
+ComparisonProgram compareSetPort() {
+    return ComparisonProgram(
+        "LOAD X, 99\nPRINT X\nHALT\n",
+        "MOV R0, #99\nPRINT R0\nHALT\n",
+        "MOV GPIOA, #99\nMOV R0, GPIOA\nPRINT R0\nHALT\n")
+}
+
+ComparisonProgram compareSetProgram(Int index) {
+    if (index == 1) { return compareSetCall() }
+    if (index == 2) { return compareSetPort() }
+    return compareSetOverflow()
+}
+
+String compareSetTitle(Int index, String language) {
+    if (index == 1) {
+        if (isPt(language)) { return "Chamada e retorno de sub-rotina" }
+        return "A subroutine call and return"
+    }
+    if (index == 2) {
+        if (isPt(language)) { return "Um valor movido por uma \"porta\"" }
+        return "A value moved through a \"port\""
+    }
+    if (isPt(language)) { return "Overflow e carry" }
+    return "Overflow and carry"
+}
+
+// The already-documented real difference this set shows — the same facts
+// docs/architecture-comparison.md's table names, not a new claim.
+String compareSetDescription(Int index, String language) {
+    if (index == 1) {
+        if (isPt(language)) {
+            return "O CALL/RET da PubVM empilha/desempilha um endereço de retorno numa pilha"
+                + " que cresce para baixo; o CALL/RET do 8051 faz o mesmo numa pilha que cresce"
+                + " para cima; o BL/BX LR do Cortex-M3 não toca pilha nenhuma — uma chamada"
+                + " aninhada que esquece PUSH {LR} perde o endereço de retorno externo."
+        }
+        return "PubVM's CALL/RET push/pop a return address on a stack growing downward; the"
+            + " 8051's CALL/RET do the same on a stack growing upward; the Cortex-M3's BL/BX LR"
+            + " touch no stack at all — a nested call that forgets PUSH {LR} loses the outer"
+            + " return address."
+    }
+    if (index == 2) {
+        if (isPt(language)) {
+            return "X/Y da PubVM são registradores comuns; R0-R7 do 8051 são bancados, alias"
+                + " dentro da Internal Data Memory; R0-R12 do Cortex-M3 são um register file"
+                + " genuinamente plano, e o GPIOA só é alcançável pelo MOV."
+        }
+        return "PubVM's X/Y are ordinary registers; the 8051's R0-R7 are banked, aliased into"
+            + " Internal Data Memory; the Cortex-M3's R0-R12 are a genuinely flat register file,"
+            + " and GPIOA is reachable only by MOV."
+    }
+    if (isPt(language)) {
+        return "O C/O da PubVM significam \"houve borrow/overflow\"; o 8051 não tem Z"
+            + " persistente, só C/AC/OV/P; o C do Cortex-M3 numa subtração é NÃO borrow — o"
+            + " sentido oposto dos outros dois."
+    }
+    return "PubVM's C/O mean \"a borrow/overflow happened\"; the 8051 has no persistent Z, only"
+        + " C/AC/OV/P; the Cortex-M3's C on a subtract is NOT borrow — the opposite sense from"
+        + " the other two."
+}
+
+class CompareState {
+    static Int selected = 0
+    static Machine pubvm = Machine(pubvm8())
+    static Machine8051 m8051 = Machine8051()
+    static MachineM3 m3 = MachineM3()
+    static Bool assembled = false
+    static String message = ""
+    static MachineState pubvmPrevious = Machine(pubvm8()).snapshot()
+    static MachineState8051 m8051Previous = Machine8051().snapshot()
+    static MachineStateM3 m3Previous = MachineM3().snapshot()
+}
+
+Int compareSelected() {
+    return CompareState.selected
+}
+
+void compareSelect(Int index) {
+    var safe = index
+    if (safe < 0) { safe = 0 }
+    if (safe >= compareSetCount()) { safe = 0 }
+    CompareState.selected = safe
+    CompareState.assembled = false
+    CompareState.pubvm = Machine(pubvm8())
+    CompareState.m8051 = Machine8051()
+    CompareState.m3 = MachineM3()
+}
+
+Bool compareAssembled() {
+    return CompareState.assembled
+}
+
+String compareMessage() {
+    return CompareState.message
+}
+
+MachineState comparePubvmState() { return CompareState.pubvm.snapshot() }
+MachineState8051 compareM8051State() { return CompareState.m8051.snapshot() }
+MachineStateM3 compareM3State() { return CompareState.m3.snapshot() }
+
+String comparePubvmExplanation(String language) {
+    if (!CompareState.assembled) { return noExplainYet(language) }
+    return instructionExplanation(CompareState.pubvmPrevious, CompareState.pubvm.snapshot(), language)
+}
+
+String compareM8051Explanation(String language) {
+    if (!CompareState.assembled) { return noExplainYet(language) }
+    return instructionExplanation8051(CompareState.m8051Previous, CompareState.m8051.snapshot(), language)
+}
+
+String compareM3Explanation(String language) {
+    if (!CompareState.assembled) { return noExplainYet(language) }
+    return instructionExplanationM3(CompareState.m3Previous, CompareState.m3.snapshot(), language)
+}
+
+Bool compareAssemble(String language) {
+    val program = compareSetProgram(CompareState.selected)
+    val p = assembleSource(program.pubvmSource(), pubvm8())
+    val e = assembleSource8051(program.i8051Source())
+    val m = assembleSourceM3(program.cm3Source())
+
+    CompareState.pubvm = Machine(pubvm8())
+    CompareState.m8051 = Machine8051()
+    CompareState.m3 = MachineM3()
+
+    val ok = p.ok() && e.ok() && m.ok()
+    if (ok) {
+        CompareState.pubvm.load(p.image())
+        CompareState.m8051.load(e.image())
+        CompareState.m3.load(m.image())
+        CompareState.assembled = true
+        CompareState.message = assembledMessage(p.byteCount() + e.byteCount() + m.byteCount(), language)
+    } else {
+        CompareState.assembled = false
+        CompareState.message = assemblyFailedMessage(language)
+    }
+    CompareState.pubvmPrevious = CompareState.pubvm.snapshot()
+    CompareState.m8051Previous = CompareState.m8051.snapshot()
+    CompareState.m3Previous = CompareState.m3.snapshot()
+    return ok
+}
+
+// One Step advances all three machines by one instruction each — the ones
+// still running; a machine that already halted just stays put, so a faster
+// architecture never blocks the others (docs/architecture-comparison.md,
+// "No synchronized Run", only synchronized Step).
+Bool compareStepAll(String language) {
+    if (!CompareState.assembled) {
+        CompareState.message = notAssembledMessage(language)
+        return false
+    }
+    CompareState.pubvmPrevious = CompareState.pubvm.snapshot()
+    CompareState.m8051Previous = CompareState.m8051.snapshot()
+    CompareState.m3Previous = CompareState.m3.snapshot()
+
+    var any = false
+    if (CompareState.pubvm.canRun()) { CompareState.pubvm.step(); any = true }
+    if (CompareState.m8051.canRun()) { CompareState.m8051.step(); any = true }
+    if (CompareState.m3.canRun()) { CompareState.m3.step(); any = true }
+
+    if (any) {
+        CompareState.message = pausedAtMessage(CompareState.pubvm.cycles, language)
+    } else {
+        CompareState.message = haltedMessage(CompareState.pubvm.cycles, language)
+    }
+    return any
+}

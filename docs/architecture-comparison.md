@@ -2,7 +2,7 @@
 
 # Architecture comparison — educational model
 
-## Status: stage A done
+## Status: stages A and B done
 
 This page is the full scope for phase 11, written before any code, the same
 discipline phases 8, 9 and 10 used. Phase 11 is **not** a fourth machine: it
@@ -76,9 +76,13 @@ through phases 9-10 for exactly this reason (so each architecture's real
 idiosyncrasies stay faithful, not normalized), and the UI layer keeps that
 same independence.
 
-## Stage B — the comparison view
+## Stage B — the comparison view — done
 
-Once all three machines have a tab, stage B adds a fourth view: not a new
+Implemented as `publab/ui/Compare.kf`, its own controller (the same
+independence Stage A's three tabs keep): a program selector, Assemble and
+"Step (all three)" controls, and three compact per-architecture panels —
+status, output, and the same generic explanation Stage A's tabs use. Once
+all three machines have a tab, stage B adds a fourth view: not a new
 machine, a side-by-side reading of the other three. The student picks one
 of a small set of **comparison programs** — a short task implemented three
 times, once per architecture, in each one's own real assembly — and the lab

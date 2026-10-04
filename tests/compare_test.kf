@@ -1,0 +1,106 @@
+package tests
+
+import publab.machine
+import publab.assembler
+import publab.i8051
+import publab.cm3
+import publab.ui
+
+// Phase 11 stage B — the comparison view's controller. Three real,
+// independently assembled programs per set, run Step-synchronized. Pure
+// controller logic, tested the same way Lab8051.kf/LabM3.kf are
+// (tests/ui8051_test.kf, tests/uiM3_test.kf).
+
+test "all three comparison sets assemble cleanly on all three architectures" {
+    var i = 0
+    while (i < compareSetCount()) {
+        compareSelect(i)
+        assert(compareAssemble("en"), "set " + i + " failed to assemble")
+        i = i + 1
+    }
+}
+
+test "compareStepAll advances all three machines together, one instruction each" {
+    compareSelect(0) // overflow/carry
+    compareAssemble("en")
+    val beforePubvm = comparePubvmState().pc()
+    val before8051 = compareM8051State().pc()
+    val beforeM3 = compareM3State().pc()
+    compareStepAll("en")
+    assert(comparePubvmState().pc() != beforePubvm)
+    assert(compareM8051State().pc() != before8051)
+    assert(compareM3State().pc() != beforeM3)
+}
+
+test "a machine that halts first stays put while the others keep stepping" {
+    // Set 1 (call/return): the three programs are not the same length, so
+    // they do not halt on the same step — the whole reason compareStepAll
+    // only steps machines that canRun(), docs/architecture-comparison.md's
+    // "No synchronized Run, only synchronized Step".
+    compareSelect(1)
+    compareAssemble("en")
+    var steps = 0
+    while (steps < 20) {
+        compareStepAll("en")
+        steps = steps + 1
+    }
+    assert(statusName(comparePubvmState().status()) == "HALTED")
+    assert(statusName(compareM8051State().status()) == "HALTED")
+    assert(statusName(compareM3State().status()) == "HALTED")
+}
+
+test "set 0 (overflow): PubVM and 8051 carry out; the Cortex-M3's C on SUB/CMP is NOT borrow" {
+    compareSelect(0)
+    compareAssemble("en")
+    var i = 0
+    while (i < 20 && statusName(compareM3State().status()) != "HALTED") {
+        compareStepAll("en")
+        i = i + 1
+    }
+    assert(statusName(comparePubvmState().status()) == "HALTED")
+    assert(statusName(compareM8051State().status()) == "HALTED")
+    assert(statusName(compareM3State().status()) == "HALTED")
+    assert(comparePubvmState().carry(), "250 + 20 overflows an 8-bit word: PubVM's C is 1")
+    assert(compareM8051State().carry(), "same overflow, the 8051's C is 1")
+    assert(compareM3State().carry(), "10 - 3 does not borrow: real ARM's C (NOT borrow) is 1")
+}
+
+test "set 1 (call/return): all three really returned, via their own calling convention" {
+    compareSelect(1)
+    compareAssemble("en")
+    var i = 0
+    while (i < 20 && statusName(compareM3State().status()) != "HALTED") {
+        compareStepAll("en")
+        i = i + 1
+    }
+    assert(comparePubvmState().output().get(0) == "7")
+    assert(compareM8051State().output().get(0) == "7")
+    assert(compareM3State().output().get(0) == "7")
+}
+
+test "set 2 (port): the same 99 round-trips through each architecture's own register shape" {
+    compareSelect(2)
+    compareAssemble("en")
+    var i = 0
+    while (i < 20 && statusName(compareM3State().status()) != "HALTED") {
+        compareStepAll("en")
+        i = i + 1
+    }
+    assert(comparePubvmState().output().get(0) == "99")
+    assert(compareM8051State().output().get(0) == "99")
+    assert(compareM3State().output().get(0) == "99")
+}
+
+test "compareSetDescription names the real, already-documented difference, in both languages" {
+    val en = compareSetDescription(1, "en")
+    assert(en.contains("stack"), en)
+    val pt = compareSetDescription(1, "pt")
+    assert(pt.contains("pilha"), pt)
+}
+
+test "a failed assembly on any one architecture leaves the whole set unassembled" {
+    compareSelect(0)
+    assert(compareAssemble("en"))
+    compareSelect(0) // re-select resets to a clean, unassembled state
+    assert(compareAssembled() == false)
+}

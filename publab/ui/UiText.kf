@@ -233,3 +233,32 @@ String comparisonNote(String language) {
     return "All three real machines sit one below another in this same window —"
         + " scroll down for the 8051 and the Cortex-M3."
 }
+
+// --- phase 11 stage B: the comparison view ---
+
+String compareTitle(String language) {
+    if (isPt(language)) { return "COMPARAÇÃO ENTRE ARQUITETURAS" }
+    return "ARCHITECTURE COMPARISON"
+}
+
+String compareSetLabel(String language) {
+    if (isPt(language)) { return "PROGRAMA" }
+    return "PROGRAM"
+}
+
+String compareStepAllButton(String language) {
+    if (isPt(language)) { return "Passo (as três)" }
+    return "Step (all three)"
+}
+
+String comparePubvmLabel(String language) {
+    return "PubVM-8"
+}
+
+String compare8051Label(String language) {
+    return "8051"
+}
+
+String compareM3Label(String language) {
+    return "Cortex-M3"
+}

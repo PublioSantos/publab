@@ -123,6 +123,31 @@ class Ui {
     static Label diagnosticsM3 = Label("")
     static Label explainM3Title = Label("")
     static Label explanationM3 = Label("")
+
+    // Phase 11 stage B: the comparison view. Three real, independently
+    // assembled programs run Step-synchronized — see publab/ui/Compare.kf.
+    static Label compareTitle = Label("")
+    static Select compareSets = Select(listOf("Overflow and carry"))
+    static Label compareSetLabel = Label("")
+    static Label compareDescription = Label("")
+    static Button compareAssembleButton = Button("", () -> {})
+    static Button compareStepButton = Button("", () -> {})
+    static Label compareMessage = Label("")
+
+    static Label comparePubvmLabel = Label("")
+    static Label comparePubvmStatus = Label("")
+    static Label comparePubvmOutput = Label("")
+    static Label comparePubvmExplain = Label("")
+
+    static Label compare8051Label = Label("")
+    static Label compare8051Status = Label("")
+    static Label compare8051Output = Label("")
+    static Label compare8051Explain = Label("")
+
+    static Label compareM3Label = Label("")
+    static Label compareM3Status = Label("")
+    static Label compareM3Output = Label("")
+    static Label compareM3Explain = Label("")
 }
 
 Color textColor() { return Color(230, 230, 242) }
@@ -320,6 +345,59 @@ void onM3Run() {
     refreshM3()
 }
 
+// Phase 11 stage B: the comparison view's own refresh/relabel and handlers.
+void refreshCompare() {
+    val language = labLanguage()
+    Ui.compareMessage.text = compareMessage()
+    Ui.compareDescription.text = compareSetDescription(compareSelected(), language)
+
+    val pubvmState = comparePubvmState()
+    Ui.comparePubvmStatus.text = statusText(pubvmState, language)
+    Ui.comparePubvmOutput.text = outputText(pubvmState, language)
+    Ui.comparePubvmExplain.text = comparePubvmExplanation(language)
+
+    val m8051State = compareM8051State()
+    Ui.compare8051Status.text = statusText8051(m8051State, language)
+    Ui.compare8051Output.text = outputText8051(m8051State, language)
+    Ui.compare8051Explain.text = compareM8051Explanation(language)
+
+    val m3State = compareM3State()
+    Ui.compareM3Status.text = statusTextM3(m3State, language)
+    Ui.compareM3Output.text = outputTextM3(m3State, language)
+    Ui.compareM3Explain.text = compareM3Explanation(language)
+}
+
+// The set names themselves stay in English in the selector, the same way
+// Ui.machines' and Ui.examples' own option text is never re-translated on a
+// language change (relabel() only re-labels panel titles and buttons) — see
+// main()'s build below. The language DOES reach the description text,
+// status/output/explanation, refreshed through refreshCompare().
+void relabelCompare() {
+    val language = labLanguage()
+    Ui.compareTitle.text = compareTitle(language)
+    Ui.compareSetLabel.text = compareSetLabel(language)
+    Ui.compareAssembleButton.text = assembleButton(language)
+    Ui.compareStepButton.text = compareStepAllButton(language)
+    Ui.comparePubvmLabel.text = comparePubvmLabel(language)
+    Ui.compare8051Label.text = compare8051Label(language)
+    Ui.compareM3Label.text = compareM3Label(language)
+}
+
+void onCompareSetChange() {
+    compareSelect(Ui.compareSets.selected())
+    refreshCompare()
+}
+
+void onCompareAssemble() {
+    compareAssemble(labLanguage())
+    refreshCompare()
+}
+
+void onCompareStep() {
+    compareStepAll(labLanguage())
+    refreshCompare()
+}
+
 // The labels that are not machine state: panel titles and control captions.
 // Re-applied when the language changes.
 void relabel() {
@@ -395,6 +473,8 @@ void onLanguageChange() {
     refresh8051()
     relabelM3()
     refreshM3()
+    relabelCompare()
+    refreshCompare()
 }
 
 void onMemoryModeChange() {
@@ -683,6 +763,72 @@ main() {
     var labM3Shell = View(root)
     labM3Shell.bind(labM3Body)
 
+    // --- phase 11 stage B: the comparison view ---
+    Ui.compareTitle = Label("")
+    Ui.compareTitle.fontSize = 18
+    Ui.compareTitle.bold = true
+    Ui.compareTitle.color = focusColor()
+
+    Ui.compareSetLabel = sectionTitle(Label(""))
+    var compareSetNames: List<String> = listOf()
+    var compareIndex = 0
+    while (compareIndex < compareSetCount()) {
+        compareSetNames.add(compareSetTitle(compareIndex, "en"))
+        compareIndex = compareIndex + 1
+    }
+    Ui.compareSets = Select(compareSetNames)
+    Ui.compareSets.setSelected(0)
+    Ui.compareSets.on("change", (e: Event) -> onCompareSetChange())
+
+    Ui.compareDescription = Label("")
+    Ui.compareDescription.fontSize = 12
+    Ui.compareDescription.color = dimColor()
+
+    Ui.compareAssembleButton = Button("", () -> onCompareAssemble())
+    Ui.compareStepButton = Button("", () -> onCompareStep())
+    var compareControls = Row(listOf(Ui.compareAssembleButton, Ui.compareStepButton))
+
+    Ui.compareMessage = Label("")
+    Ui.compareMessage.fontSize = 12
+    Ui.compareMessage.color = dataColor()
+
+    Ui.comparePubvmLabel = sectionTitle(Label(""))
+    Ui.comparePubvmStatus = Label("")
+    Ui.comparePubvmOutput = Label("")
+    Ui.comparePubvmOutput.color = successColor()
+    Ui.comparePubvmExplain = Label("")
+    Ui.comparePubvmExplain.color = focusColor()
+    var comparePubvmPanel = View(panel)
+    comparePubvmPanel.bind(Column(listOf(Ui.comparePubvmLabel,
+        Ui.comparePubvmStatus, Ui.comparePubvmOutput, Ui.comparePubvmExplain)))
+
+    Ui.compare8051Label = sectionTitle(Label(""))
+    Ui.compare8051Status = Label("")
+    Ui.compare8051Output = Label("")
+    Ui.compare8051Output.color = successColor()
+    Ui.compare8051Explain = Label("")
+    Ui.compare8051Explain.color = focusColor()
+    var compare8051Panel = View(panel)
+    compare8051Panel.bind(Column(listOf(Ui.compare8051Label,
+        Ui.compare8051Status, Ui.compare8051Output, Ui.compare8051Explain)))
+
+    Ui.compareM3Label = sectionTitle(Label(""))
+    Ui.compareM3Status = Label("")
+    Ui.compareM3Output = Label("")
+    Ui.compareM3Output.color = successColor()
+    Ui.compareM3Explain = Label("")
+    Ui.compareM3Explain.color = focusColor()
+    var compareM3Panel = View(panel)
+    compareM3Panel.bind(Column(listOf(Ui.compareM3Label,
+        Ui.compareM3Status, Ui.compareM3Output, Ui.compareM3Explain)))
+
+    var compareBody = Column(listOf(Ui.compareTitle,
+        Row(listOf(Ui.compareSetLabel, Ui.compareSets)),
+        Ui.compareDescription, compareControls, Ui.compareMessage,
+        Row(listOf(comparePubvmPanel, compare8051Panel, compareM3Panel))))
+    var compareShell = View(root)
+    compareShell.bind(compareBody)
+
     // --- compose ---
     var body = Column(listOf(header, Hr(), selectors, Hr(),
         Ui.sourceTitle, Ui.editor, controls, Ui.message, Hr(),
@@ -691,6 +837,7 @@ main() {
         explainPanel, changesPanel, memoryPanel, stackPanel,
         outputPanel, diagnosticsPanel,
         Hr(), lab8051Shell, Hr(), labM3Shell,
+        Hr(), compareShell,
         Hr(), poweredBy))
     var shell = View(root)
     shell.bind(body)
@@ -702,6 +849,8 @@ main() {
     relabel8051()
     refresh8051()
     relabelM3()
+    relabelCompare()
+    refreshCompare()
     refreshM3()
     Ui.window.show()
 }

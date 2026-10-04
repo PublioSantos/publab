@@ -125,7 +125,7 @@ below is enforced by the test suite.
 | 8 | Advanced Mode — X, Y, SP, FP, stack, shifts, extra jumps | **done** |
 | 9 | 8051 educational model | stages A-B done (core + assembler + P0, no UI yet) |
 | 10 | Cortex-M3 educational model | stages A-B done (core + assembler + GPIOA, no UI yet) |
-| 11 | Architecture comparison | stage A done (8051 and Cortex-M3 UI tabs) |
+| 11 | Architecture comparison | stages A-B done (8051/Cortex-M3 UI tabs + comparison view) |
 | 12 | Export | not started |
 
 One absence in phases 1-8 is deliberate rather than pending: there is no
