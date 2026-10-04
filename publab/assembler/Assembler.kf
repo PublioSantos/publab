@@ -157,8 +157,13 @@ AssemblyResult assembleSource(String source, MachineConfig config) {
                 }
             }
         }
-        if (placed.size > 0 && placed.get(placed.size - 1).index() == index) {
-            address = address + placed.get(placed.size - 1).length()
+        // The size guard is a nested `if`, not `placed.size > 0 && placed.get(...)`:
+        // on the JS target an indexing expression on the right of `&&` is
+        // evaluated even when the left operand is false, so the guard would not
+        // protect it (see notes/kof-compiler-findings.md, D-2).
+        if (placed.size > 0) {
+            val last = placed.get(placed.size - 1)
+            if (last.index() == index) { address = address + last.length() }
         }
         index = index + 1
     }
@@ -253,24 +258,35 @@ Int firstDefinitionLine(List<LabelDef> labels, String name) {
 
 // Resolves an address operand (literal, [literal] or a label) and range-checks
 // it against the machine's memory.
+//
+// Written with a single exit on purpose. An early `return` inside an `if`
+// nested in the `else` branch makes this function return `undefined` on the
+// JS target, with the trailing `return` silently dropped — the first real
+// divergence found between the two targets
+// (see notes/kof-compiler-findings.md, D-1).
 Int resolveAddressOperand(Operand operand, List<Symbol> symbols, MachineConfig config,
                         List<Diagnostic> diagnostics) {
     var address = 0
+    var resolved = true
     if (operand.kind() == "imm" || operand.kind() == "mem") {
         address = (operand.imm() as Int)
     } else {
         val found = findSymbol(symbols, operand.label())
-        if (!found.found()) {
+        if (found.found()) {
+            address = found.address()
+        } else {
             diagnostics.add(errorAt("ASM006", operand.line(), operand.column(),
                 args1(operand.label())))
-            return 0
+            resolved = false
         }
-        address = found.address()
     }
-    if (address < 0 || address >= config.memorySize()) {
-        diagnostics.add(errorAt("ASM008", operand.line(), operand.column(),
-            args3("" + address, "" + config.memorySize(), "" + (config.memorySize() - 1))))
-        return 0
+    if (resolved) {
+        if (address < 0 || address >= config.memorySize()) {
+            diagnostics.add(errorAt("ASM008", operand.line(), operand.column(),
+                args3("" + address, "" + config.memorySize(), "" + (config.memorySize() - 1))))
+            resolved = false
+        }
     }
+    if (!resolved) { address = 0 }
     return address
 }

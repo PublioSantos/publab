@@ -119,11 +119,24 @@ before editing the code:
   if/else chain, and the machine core is meant to compile to the JS target
   later for the UI.
 - **Bitwise operators on `Long` are used for masking and the logic
-  instructions.** They are verified on the JVM target; the language
-  specification marks bitwise semantics as unspecified across targets
-  (SG-002), so this is the one area to re-verify when the JS target is
-  introduced for the UI. It is deliberately confined to `Word.kf` and
-  `Alu.kf`.
+  instructions.** The language specification marks bitwise semantics as
+  unspecified across targets (SG-002), so they were verified on **both**
+  targets before any UI work: `tests/js_parity_test.kf` runs the masks, the
+  shifts, the logic operations above 2^31, the flags and the 32-bit memory
+  word on `jvm` and on `js`, and the results are identical. SG-002 is not a
+  problem for this core. The usage stays confined to `Word.kf`, `Alu.kf`,
+  `Memory.kf` and one helper in `Assembler.kf`.
+- **Two JS-target codegen defects shape how control flow is written here**,
+  both found in phase 5A and documented with minimal repros in
+  `notes/kof-compiler-findings.md`:
+  - **Never put an early `return` inside an `if` nested in an `else` branch**
+    when more statements follow it in that branch — the JS target drops the
+    function's trailing `return` and the function yields `undefined`. Use a
+    single exit point. (`resolveAddressOperand`, `parseMemoryOperand`.)
+  - **Never guard an indexing expression with `&&` in the same condition** —
+    `list.size > 0 && list.get(list.size - 1)` evaluates the right side on the
+    JS target even when the left is false. Use a nested `if`. (Pass 1 of the
+    assembler.)
 - **`List<T>` of a package-local `record` cannot be annotated empty**
   (`var l: List<OpSpec> = listOf()` trips SEM010 inside its own package).
   Either seed the list with its first element, or spell the fully-qualified

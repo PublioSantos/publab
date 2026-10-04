@@ -122,10 +122,24 @@ antes de editar o código:
   dentro de uma cadeia if/else, e o núcleo da máquina deve compilar para o
   target JS mais adiante, para a UI.
 - **Operadores bitwise em `Long` são usados para máscara e para as instruções
-  lógicas.** Estão verificados no target JVM; a especificação da linguagem
-  marca a semântica bitwise como não especificada entre targets (SG-002),
-  então esta é a área a reverificar quando o target JS entrar para a UI. Está
-  deliberadamente confinada a `Word.kf` e `Alu.kf`.
+  lógicas.** A especificação da linguagem marca a semântica bitwise como não
+  especificada entre targets (SG-002), então eles foram verificados nos
+  **dois** targets antes de qualquer trabalho de UI:
+  `tests/js_parity_test.kf` roda as máscaras, os shifts, as operações lógicas
+  acima de 2^31, as flags e a palavra de 32 bits na memória em `jvm` e em
+  `js`, e os resultados são idênticos. O SG-002 não é problema para este
+  núcleo. O uso continua confinado a `Word.kf`, `Alu.kf`, `Memory.kf` e um
+  helper em `Assembler.kf`.
+- **Dois defeitos de geração de código do target JS determinam como o fluxo de
+  controle é escrito aqui**, ambos achados na fase 5A e documentados com
+  repro mínimo em `notes/kof-compiler-findings.md`:
+  - **Nunca colocar `return` antecipado dentro de um `if` aninhado no ramo
+    `else`** quando há mais statements depois dele nesse ramo — o target JS
+    descarta o `return` final da função e ela devolve `undefined`. Usar ponto
+    de saída único. (`resolveAddressOperand`, `parseMemoryOperand`.)
+  - **Nunca proteger uma indexação com `&&` na mesma condição** —
+    `list.size > 0 && list.get(list.size - 1)` avalia o lado direito no target
+    JS mesmo com o esquerdo falso. Usar `if` aninhado. (Pass 1 do assembler.)
 - **`List<T>` de um `record` local do pacote não pode ser anotada vazia**
   (`var l: List<OpSpec> = listOf()` dá SEM010 dentro do próprio pacote). Ou se
   semeia a lista com o primeiro elemento, ou se escreve o nome totalmente

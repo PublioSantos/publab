@@ -71,7 +71,8 @@ estar coberto pela suíte de testes.
 | 2 | PubASM — lexer, parser, labels, diagnostics, assembler | **concluída** |
 | 3 | PubVM-16 (mesmo núcleo, palavra maior) | **concluída** |
 | 4 | PubVM-32 (mesmo núcleo, palavra maior) | **concluída** |
-| 5 | UI mínima | não iniciada |
+| 5A | Paridade do núcleo no target JS | **concluída** |
+| 5B | UI mínima | não iniciada |
 | 6 | Debugger | não iniciada |
 | 7 | Camada educacional | não iniciada |
 | 8 | Advanced Mode — X, Y, SP, FP, stack, shifts, saltos extras | não iniciada |
@@ -100,7 +101,7 @@ diz isso, em vez de reportá-los como desconhecidos.
 O PubLab exibe **Powered by: Kof**, com link para
 <https://github.com/KofLang/Kof4j>, ao lado do nome do produto.
 
-Ainda não existe interface (fase 5), então a atribuição vive em
+Ainda não existe interface (fase 5B), então a atribuição vive em
 `publab/app/Brand.kf` como fonte única que a interface vai renderizar —
 `poweredByLabel()` e `poweredByUrl()` — em vez de uma string que a UI poderia
 esquecer. Está coberta por `tests/brand_test.kf`.
@@ -128,3 +129,27 @@ MIT — veja [LICENSE](LICENSE).
 
 A documentação de ensino da seção 38 da especificação (o que é uma CPU, o que
 é um registrador, o que é overflow) chega com a camada educacional na fase 7.
+
+## Targets
+
+O núcleo roda nos dois targets do Kof a partir da mesma fonte — não existe uma
+segunda implementação da máquina em JavaScript:
+
+```
+                  ┌── jvm   (testes, e uma CLI futura)
+Núcleo PubVM ─────┤
+                  └── js    (a UI no navegador, fase 5B)
+```
+
+Os dois estão verdes na suíte inteira:
+
+```bash
+kof test tests
+kof test tests --target js
+```
+
+O `tests/js_parity_test.kf` é a bateria de paridade: as operações bitwise e
+numéricas de que o núcleo depende (SG-002), mais guardas contra os dois
+defeitos de geração de código do target JS achados na fase 5A. Veja
+[docs/architecture.pt_BR.md](docs/architecture.pt_BR.md) e
+[notes/kof-compiler-findings.md](notes/kof-compiler-findings.md).

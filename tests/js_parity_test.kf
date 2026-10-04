@@ -1,0 +1,270 @@
+package tests
+
+import publab.machine
+import publab.assembler
+
+// Phase 5A — target parity.
+//
+// PubLab will be compiled to the JS target to run in a browser, from the SAME
+// Kof core the JVM runs. This file is the parity battery: it must produce
+// identical results under
+//
+//     kof test tests/js_parity_test.kf
+//     kof test tests/js_parity_test.kf --target js
+//
+// Two groups of tests:
+//
+//  1. SG-002 — bitwise and numeric semantics, which the language
+//     specification marks as unspecified across targets. These are the
+//     operations the PubVM core actually depends on: the 14 bitwise sites in
+//     Word.kf, Alu.kf, Memory.kf and Assembler.kf. The 32-bit cases are the
+//     dangerous ones: a backend that modelled Long as a 32-bit int, or as a
+//     double with JS bitwise semantics, would fail them.
+//
+//  2. Regression guards for the two real divergences found in phase 5A, both
+//     of them control-flow codegen bugs rather than bitwise ones. They are
+//     documented as D-1 and D-2 in notes/kof-compiler-findings.md.
+
+// ---------------------------------------------------------------- SG-002 ----
+
+test "SG-002: shifts build the mask and the sign bit at every width" {
+    // wordMask is (1 << n) - 1 and wordSignBit is 1 << (n - 1). A 32-bit shift
+    // of a 32-bit value is where JS semantics would differ: `1 << 32` is 1 in
+    // JavaScript, which would make the 32-bit mask 0.
+    assert(wordMask(8) == 255 as Long)
+    assert(wordMask(16) == 65535 as Long)
+    assert(wordMask(32) == 4294967295 as Long, "the 32-bit mask must not collapse")
+    assert(wordSignBit(8) == 128 as Long)
+    assert(wordSignBit(16) == 32768 as Long)
+    assert(wordSignBit(32) == 2147483648 as Long, "bit 31 must stay positive")
+}
+
+test "SG-002: AND masking keeps values above 2^31 intact" {
+    // wordWrap is `value & mask`. In JavaScript, `x & 0xFFFFFFFF` returns a
+    // SIGNED 32-bit result, so anything at or above 2^31 would come back
+    // negative.
+    assert(wordWrap(4294967295 as Long, 32) == 4294967295 as Long)
+    assert(wordWrap(2147483648 as Long, 32) == 2147483648 as Long)
+    assert(wordWrap(3000000000 as Long, 32) == 3000000000 as Long)
+    // And a value wider than the word still truncates.
+    assert(wordWrap(4294967296 as Long, 32) == 0 as Long, "2^32 truncates to 0")
+    assert(wordWrap(4294967297 as Long, 32) == 1 as Long)
+}
+
+test "SG-002: the sign test and the signed reading at 32 bits" {
+    assert(wordIsNegative(2147483648 as Long, 32), "2^31 has bit 31 set")
+    assert(wordIsNegative(2147483647 as Long, 32) == false)
+    assert(wordToSigned(4294967295 as Long, 32) == (0 as Long) - (1 as Long),
+        "all ones reads as -1")
+    assert(wordToSigned(2147483648 as Long, 32) == wordMinSigned(32))
+    assert(wordMinSigned(32) == (0 as Long) - (2147483648 as Long))
+    assert(wordMaxSigned(32) == 2147483647 as Long)
+}
+
+test "SG-002: two's complement of a negative value at every width" {
+    val minusSix = (0 as Long) - (6 as Long)
+    assert(wordWrap(minusSix, 8) == 250 as Long)
+    assert(wordWrap(minusSix, 16) == 65530 as Long)
+    assert(wordWrap(minusSix, 32) == 4294967290 as Long)
+}
+
+test "SG-002: the logical right shift used by hex and binary rendering" {
+    // toHex/toBin walk the value with >>> 4 and >>> 1. An arithmetic shift, or
+    // a shift on a signed 32-bit value, would corrupt the top digits.
+    assert(wordToHex(4294967295 as Long, 32) == "FFFFFFFF")
+    assert(wordToHex(2147483648 as Long, 32) == "80000000")
+    assert(wordToHex(305419896 as Long, 32) == "12345678")
+    assert(wordToBin(2147483648 as Long, 32) == "10000000000000000000000000000000")
+    assert(wordToBin(4294967295 as Long, 32).length == 32)
+    assert(wordToHex(14 as Long, 8) == "0E")
+    assert(wordToBin(14 as Long, 8) == "00001110")
+}
+
+test "SG-002: ALU AND, OR, XOR and NOT above 2^31" {
+    val ws = 32
+    val high = 4042322160 as Long       // F0F0F0F0
+    val low = 252645135 as Long         // 0F0F0F0F
+    assert(aluAnd(high, low, ws).value() == 0 as Long)
+    assert(aluOr(high, low, ws).value() == 4294967295 as Long)
+    assert(aluXor(high, low, ws).value() == 4294967295 as Long)
+    assert(aluNot(high, ws).value() == low, "NOT F0F0F0F0 = 0F0F0F0F")
+    assert(aluNot(0 as Long, ws).value() == 4294967295 as Long)
+    assert(aluNot(0 as Long, 16).value() == 65535 as Long)
+    assert(aluNot(0 as Long, 8).value() == 255 as Long)
+    // The flags that come with them.
+    assert(aluAnd(high, low, ws).zero(), "Z on a zero result")
+    assert(aluOr(high, low, ws).negative(), "N from bit 31")
+    assert(aluNot(high, ws).carry() == false && aluNot(high, ws).overflow() == false,
+        "a logic operation clears C and O")
+}
+
+test "SG-002: ADD carry at the top of a 32-bit word" {
+    // The untruncated sum here is 2^33 - 2, which needs more than 32 bits to
+    // compare against the mask. A 32-bit accumulator would lose the carry.
+    val r = aluAdd(4294967295 as Long, 4294967295 as Long, 32)
+    assert(r.value() == 4294967294 as Long)
+    assert(r.carry(), "C = 1")
+    assert(r.negative(), "N = 1")
+    assert(r.zero() == false)
+    val wrap = aluAdd(4294967295 as Long, 1 as Long, 32)
+    assert(wrap.value() == 0 as Long && wrap.carry() && wrap.zero())
+}
+
+test "SG-002: ADD and SUB flags at every width" {
+    for (var config in allMachines()) {
+        val ws = config.wordSize()
+        // Unsigned wrap.
+        val carry = aluAdd(wordMaxUnsigned(ws), 1 as Long, ws)
+        assert(carry.value() == 0 as Long && carry.carry() && carry.zero(),
+            config.name() + ": carry")
+        // Signed overflow.
+        val over = aluAdd(wordMaxSigned(ws), 1 as Long, ws)
+        assert(over.value() == wordSignBit(ws) && over.overflow() && over.negative(),
+            config.name() + ": overflow")
+        // Borrow.
+        val borrow = aluSub(3 as Long, 10 as Long, ws)
+        assert(borrow.value() == wordMask(ws) - (6 as Long) && borrow.carry(),
+            config.name() + ": borrow")
+        // Zero.
+        val zero = aluSub(wordMaxUnsigned(ws), wordMaxUnsigned(ws), ws)
+        assert(zero.value() == 0 as Long && zero.zero() && zero.negative() == false,
+            config.name() + ": zero")
+    }
+}
+
+test "SG-002: memory words are assembled from bytes identically" {
+    // Memory.readWord ORs in `b << (i * 8)` and writeWord extracts with
+    // `>>> (i * 8)` then `& 255`. A 24-bit shift into bit 31 is the risky one.
+    var memory = Memory(256)
+    memory.writeWord(0, 4, 4294967295 as Long)
+    assert(memory.readByte(0) == 255 && memory.readByte(3) == 255)
+    assert(memory.readWord(0, 4) == 4294967295 as Long)
+
+    memory.writeWord(8, 4, 2147483648 as Long)
+    assert(memory.readByte(8) == 0 && memory.readByte(9) == 0)
+    assert(memory.readByte(10) == 0 && memory.readByte(11) == 128, "bit 31 lands in byte 3")
+    assert(memory.readWord(8, 4) == 2147483648 as Long)
+
+    memory.writeWord(16, 4, 305419896 as Long)
+    assert(memory.readByte(16) == 0x78 && memory.readByte(17) == 0x56)
+    assert(memory.readByte(18) == 0x34 && memory.readByte(19) == 0x12, "little-endian")
+    assert(memory.readWord(16, 2) == 22136 as Long, "a narrower read sees the low half")
+}
+
+test "SG-002: a large value survives the whole assemble-run-print path" {
+    // Covers appendWordBytes in the assembler, writeWord/readWord in memory,
+    // the register file, and the Long-to-String rendering that PRINT uses.
+    val source = "LOAD A, 4294967295\nSTORE [256], A\nLOAD B, [256]\nPRINT B\nHALT\n"
+    val assembled = assembleSource(source, pubvm32())
+    assert(assembled.ok(), renderDiagnostics(assembled.diagnostics(), "en"))
+    assert(assembled.image().get(2) == 255 && assembled.image().get(5) == 255,
+        "the immediate is four FF bytes")
+    var machine = Machine(pubvm32())
+    machine.load(assembled.image())
+    machine.run(100)
+    assert(statusName(machine.status) == "HALTED")
+    assert(machine.registers.read(1) == 4294967295 as Long)
+    assert(machine.output.get(0) == "4294967295",
+        "a value above 2^31 prints as a plain integer, got " + machine.output.get(0))
+}
+
+test "SG-002: Long renders as a plain integer at every magnitude" {
+    // PRINT and the diagnostics build text with `"" + value`. A backend that
+    // printed 4.294967295e9, or appended a BigInt marker, would break both the
+    // output panel and the ASM005 range message.
+    assert("" + (4294967295 as Long) == "4294967295")
+    assert("" + (2147483648 as Long) == "2147483648")
+    assert("" + ((0 as Long) - (2147483648 as Long)) == "-2147483648")
+    assert("" + (0 as Long) == "0")
+    val d = errorAt("ASM005", 1, 9, args4("4294967296", "32", "" + wordMinSigned(32),
+        "" + wordMaxUnsigned(32)))
+    assert(renderDiagnostic(d, "en").contains("-2147483648 to 4294967295"))
+    assert(renderDiagnostic(d, "pt").contains("-2147483648 a 4294967295"))
+}
+
+test "SG-002: the golden program agrees on every variant" {
+    val source = "LOAD A, 250\nLOAD B, 20\nADD A, B\nPRINT A\nHALT\n"
+    var eight = Machine(pubvm8())
+    eight.load(assembleSource(source, pubvm8()).image())
+    eight.run(100)
+    assert(eight.registers.read(0) == 14 as Long && eight.flags.carry)
+    assert(eight.output.get(0) == "14")
+
+    for (var config in allMachines()) {
+        var m = Machine(config)
+        m.load(assembleSource(source, config).image())
+        m.run(100)
+        assert(statusName(m.status) == "HALTED", config.name())
+        assert(m.flags.carry == (config.wordSize() == 8), config.name() + ": carry")
+        assert(m.flags.negative == false && m.flags.overflow == false, config.name())
+    }
+}
+
+// ------------------------------------------------- regression guards --------
+
+test "D-1: an address operand resolves instead of returning nothing" {
+    // resolveAddressOperand used to return `undefined` on the JS target,
+    // because its trailing `return` was dropped when an `else` branch
+    // contained a nested early `return`. Every memory and jump operand goes
+    // through it.
+    val numeric = assembleSource("LOAD A, 5\nSTORE [128], A\nHALT\n", pubvm8())
+    assert(numeric.ok(), renderDiagnostics(numeric.diagnostics(), "en"))
+    assert(numeric.image().get(4) == 128 && numeric.image().get(5) == 0,
+        "the address is encoded little-endian, not dropped")
+
+    val byLabel = assembleSource("JMP target\nHALT\ntarget:\nHALT\n", pubvm8())
+    assert(byLabel.ok(), renderDiagnostics(byLabel.diagnostics(), "en"))
+    assert(byLabel.image().get(1) == 4 && byLabel.image().get(2) == 0)
+
+    // The two error paths of the same function.
+    val undefinedLabel = assembleSource("JMP nowhere\nHALT\n", pubvm8())
+    assert(undefinedLabel.ok() == false)
+    assert(undefinedLabel.diagnostics().get(0).code() == "ASM006")
+
+    val outside = assembleSource("JMP 0x100\nHALT\n",
+        MachineConfig("PubVM-8/tiny", 8, 64, 16, 0))
+    assert(outside.ok() == false)
+    assert(outside.diagnostics().get(0).code() == "ASM008")
+}
+
+test "D-1: a reserved register name inside brackets is rejected cleanly" {
+    // parseMemoryOperand had the same shape as the defect above, on a path no
+    // test reached: an advanced-mode register name between brackets.
+    val r = assembleSource("STORE [X], A\nHALT\n", pubvm8())
+    assert(r.ok() == false)
+    assert(r.diagnostics().get(0).code() == "ASM014")
+    assert(renderDiagnostic(r.diagnostics().get(0), "en").contains("'X' belongs to Advanced Mode"))
+    assert(assembleSource("LOAD A, [SP]\nHALT\n", pubvm8()).diagnostics().get(0).code() == "ASM014")
+    // A name that is not reserved is still a data label.
+    val labelled = assembleSource("LOAD A, [total]\nHALT\ntotal:\nHALT\n", pubvm8())
+    assert(labelled.ok(), renderDiagnostics(labelled.diagnostics(), "en"))
+}
+
+test "D-2: a failing first instruction does not index an empty list" {
+    // Pass 1 tracks placements in a list and reads its last element. On the JS
+    // target an indexing expression on the right of `&&` is evaluated even
+    // when the left operand is false, so a `size > 0` guard in the same
+    // condition did not protect the read.
+    val unknown = assembleSource("FOO A, 1\nHALT\n", pubvm8())
+    assert(unknown.ok() == false)
+    assert(unknown.diagnostics().get(0).code() == "ASM001")
+
+    val badShape = assembleSource("ADD A, [16]\nHALT\n", pubvm8())
+    assert(badShape.ok() == false)
+    assert(badShape.diagnostics().get(0).code() == "ASM002")
+
+    val badCount = assembleSource("ADD A\nHALT\n", pubvm8())
+    assert(badCount.ok() == false)
+    assert(badCount.diagnostics().get(0).code() == "ASM003")
+
+    val advanced = assembleSource("PUSH A\nHALT\n", pubvm8())
+    assert(advanced.ok() == false)
+    assert(advanced.diagnostics().get(0).code() == "ASM010")
+
+    // A program whose FIRST line is fine and whose second fails, to cover the
+    // other side of the same guard.
+    val secondFails = assembleSource("LOAD A, 1\nFOO B, 2\nHALT\n", pubvm8())
+    assert(secondFails.ok() == false)
+    assert(secondFails.diagnostics().get(0).code() == "ASM001")
+    assert(secondFails.diagnostics().get(0).line() == 2)
+}

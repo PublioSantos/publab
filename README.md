@@ -68,7 +68,8 @@ unless it is covered by the test suite.
 | 2 | PubASM — lexer, parser, labels, diagnostics, assembler | **done** |
 | 3 | PubVM-16 (same core, wider word) | **done** |
 | 4 | PubVM-32 (same core, wider word) | **done** |
-| 5 | Minimal UI | not started |
+| 5A | JS-target parity for the core | **done** |
+| 5B | Minimal UI | not started |
 | 6 | Debugger | not started |
 | 7 | Educational layer | not started |
 | 8 | Advanced Mode — X, Y, SP, FP, stack, shifts, extra jumps | not started |
@@ -96,7 +97,7 @@ rather than reporting them as unknown.
 PubLab displays **Powered by: Kof**, linking to
 <https://github.com/KofLang/Kof4j>, next to the product name.
 
-There is no interface yet (phase 5), so the attribution lives in
+There is no interface yet (phase 5B), so the attribution lives in
 `publab/app/Brand.kf` as the single source of truth the interface will render
 — `poweredByLabel()` and `poweredByUrl()` — rather than as a string the UI
 could forget. It is covered by `tests/brand_test.kf`.
@@ -125,3 +126,27 @@ MIT — see [LICENSE](LICENSE).
 The teaching documentation of section 38 of the specification (what a CPU is,
 what a register is, what overflow is) arrives with the educational layer in
 phase 7.
+
+## Targets
+
+The core runs on both Kof targets from the same source — there is no second
+implementation of the machine in JavaScript:
+
+```
+                  ┌── jvm   (tests, and a future CLI)
+PubVM core ───────┤
+                  └── js    (the browser UI, phase 5B)
+```
+
+Both are green on the whole suite:
+
+```bash
+kof test tests
+kof test tests --target js
+```
+
+`tests/js_parity_test.kf` is the parity battery: the bitwise and numeric
+operations the core depends on (SG-002), plus guards against the two
+JS-target codegen defects found in phase 5A. See
+[docs/architecture.md](docs/architecture.md) and
+[notes/kof-compiler-findings.md](notes/kof-compiler-findings.md).

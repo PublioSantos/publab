@@ -185,10 +185,15 @@ class Parser {
         return OperandParse(false, labelOperand("", token.line(), token.column()))
     }
 
+    // The reserved-name rejection sets a flag and returns after the chain,
+    // instead of returning from inside the `else if`: a `return` nested in an
+    // `if` inside an else branch drops this function's trailing `return` on the
+    // JS target (see notes/kof-compiler-findings.md, D-1).
     OperandParse parseMemoryOperand() {
         val open = this.advance()
         val inner = this.peek()
         var operand = memoryOperand(0 as Long, open.line(), open.column())
+        var rejected = false
         if (inner.kind() == "number") {
             this.advance()
             operand = memoryOperand(inner.value(), open.line(), open.column())
@@ -197,11 +202,15 @@ class Parser {
             if (isAdvancedRegisterName(inner.text())) {
                 this.diagnostics.add(errorAt("ASM014", inner.line(), inner.column(),
                     args1(inner.text().toUpperCase())))
-                return OperandParse(false, operand)
+                rejected = true
+            } else {
+                operand = memoryLabelOperand(inner.text(), open.line(), open.column())
             }
-            operand = memoryLabelOperand(inner.text(), open.line(), open.column())
         } else {
             this.reportExpected("address or label", inner)
+            rejected = true
+        }
+        if (rejected) {
             return OperandParse(false, operand)
         }
         if (this.peek().kind() != "rbracket") {
