@@ -1,0 +1,396 @@
+package publab.ui
+
+import publab.machine
+
+// Phase 7 — the educational layer. Given two MachineState snapshots (before
+// and after one control action), produces a plain-language explanation of what
+// the last instruction did — including the actual values and the reason for
+// overflow, borrow, or flag changes.
+//
+// Pure and tested on both targets, like the rest of publab.ui.
+
+// --- parsing the disassembly string -----------------------------------------
+//
+// `before.currentInstruction()` is the disassembly of the instruction that was
+// AT before.pc() when the snapshot was taken — which is the instruction that
+// just ran. The disassemble format is well-defined: one space after the
+// mnemonic, comma+space between operands, no trailing whitespace.
+
+String firstWord(String s) {
+    var i = 0
+    while (i < s.length) {
+        if (s.charAt(i) == ' ') { return s.substring(0, i) }
+        i = i + 1
+    }
+    return s
+}
+
+String afterFirstWord(String s) {
+    var i = 0
+    while (i < s.length) {
+        if (s.charAt(i) == ' ') { return s.substring(i + 1, s.length) }
+        i = i + 1
+    }
+    return ""
+}
+
+// Splits "A, B" → "A" (before the first ", ")
+String opA(String ops) {
+    var i = 0
+    while (i < ops.length - 1) {
+        if (ops.charAt(i) == ',' && ops.charAt(i + 1) == ' ') {
+            return ops.substring(0, i)
+        }
+        i = i + 1
+    }
+    return ops
+}
+
+// Splits "A, B" → "B" (after the first ", ")
+String opB(String ops) {
+    var i = 0
+    while (i < ops.length - 1) {
+        if (ops.charAt(i) == ',' && ops.charAt(i + 1) == ' ') {
+            return ops.substring(i + 2, ops.length)
+        }
+        i = i + 1
+    }
+    return ""
+}
+
+Bool isReg(String name) {
+    val up = name.toUpperCase()
+    return up == "A" || up == "B" || up == "C" || up == "D"
+        || up == "X" || up == "Y" || up == "SP" || up == "FP"
+}
+
+// --- register lookup from MachineState --------------------------------------
+
+Int regIdx(MachineState state, String name) {
+    val up = name.toUpperCase()
+    var i = 0
+    while (i < state.registerNames().size) {
+        if (state.registerNames().get(i) == up) { return i }
+        i = i + 1
+    }
+    return -1
+}
+
+Long regGet(MachineState state, String name) {
+    val id = regIdx(state, name)
+    if (id < 0) { return 0 as Long }
+    return state.registers().get(id)
+}
+
+// --- value display ----------------------------------------------------------
+
+String hex2(Long v, Int wordSize) {
+    return "0x" + toHex(v, wordSize / 4)
+}
+
+String bin8(Long v, Int wordSize) {
+    return toBin(v, wordSize)
+}
+
+// How many decimal digits the maximum value needs.
+Int decWidth(Int wordSize) {
+    return ("" + wordMaxUnsigned(wordSize)).length
+}
+
+String decAndHex(Long v, Int wordSize) {
+    return "" + v + " (" + hex2(v, wordSize) + ", " + bin8(v, wordSize) + ")"
+}
+
+// --- arithmetic reconstruction ----------------------------------------------
+//
+// For ADD dest, src: the full sum (before truncation) is stored + 2^wordSize if
+// carry fired.  Subtracting before.registers()[dest] yields the source value.
+
+Long addedAmount(MachineState before, MachineState after, String dest) {
+    val id = regIdx(before, dest)
+    if (id < 0) { return 0 as Long }
+    val aVal = before.registers().get(id)
+    val stored = after.registers().get(id)
+    val carryFired = after.carry() && !before.carry()
+    val maxPlus1 = (1 as Long) << before.wordSize()
+    val fullSum = if (carryFired) stored + maxPlus1 else stored
+    return fullSum - aVal
+}
+
+// For SUB dest, src: fullDiff = stored - 2^wordSize if borrow fired.
+// bVal = before - fullDiff.
+Long subtractedAmount(MachineState before, MachineState after, String dest) {
+    val id = regIdx(before, dest)
+    if (id < 0) { return 0 as Long }
+    val aVal = before.registers().get(id)
+    val stored = after.registers().get(id)
+    val borrowFired = after.carry() && !before.carry()
+    val maxPlus1 = (1 as Long) << before.wordSize()
+    val fullDiff = if (borrowFired) stored - maxPlus1 else stored
+    return aVal - fullDiff
+}
+
+// --- individual instruction explanations ------------------------------------
+
+String explainHalt(MachineState before, MachineState after, String language) {
+    if (isPt(language)) {
+        return "HALT parou a máquina após " + after.cycles() + " ciclos."
+    }
+    return "HALT stopped the machine after " + after.cycles() + " cycles."
+}
+
+String explainLoad(MachineState before, MachineState after,
+                   String destOp, String srcOp, String language) {
+    val destId = regIdx(after, destOp)
+    if (destId < 0) { return before.currentInstruction() }
+    val newVal = after.registers().get(destId)
+    val w = after.wordSize()
+    if (isPt(language)) {
+        if (isReg(srcOp)) {
+            val oldSrc = regGet(before, srcOp)
+            return "LOAD copiou " + srcOp + " (" + oldSrc + ") para " + destOp
+                + ". Agora " + destOp + " = " + decAndHex(newVal, w) + "."
+        }
+        if (srcOp.startsWith("[")) {
+            return "LOAD leu o valor no endereço " + srcOp + " e colocou em "
+                + destOp + ". Agora " + destOp + " = " + decAndHex(newVal, w) + "."
+        }
+        return "LOAD carregou o valor imediato " + srcOp + " em " + destOp + "."
+    }
+    if (isReg(srcOp)) {
+        val oldSrc = regGet(before, srcOp)
+        return "LOAD copied " + srcOp + " (" + oldSrc + ") into " + destOp
+            + ". Now " + destOp + " = " + decAndHex(newVal, w) + "."
+    }
+    if (srcOp.startsWith("[")) {
+        return "LOAD read the value at address " + srcOp + " into "
+            + destOp + ". Now " + destOp + " = " + decAndHex(newVal, w) + "."
+    }
+    return "LOAD stored the immediate value " + srcOp + " into " + destOp + "."
+}
+
+String explainStore(MachineState before, MachineState after,
+                    String addrOp, String srcOp, String language) {
+    val srcVal = regGet(before, srcOp)
+    if (isPt(language)) {
+        return "STORE gravou o valor de " + srcOp + " (" + srcVal
+            + ") no endereço de memória " + addrOp + "."
+    }
+    return "STORE wrote " + srcOp + " (" + srcVal + ") to memory address " + addrOp + "."
+}
+
+String explainAdd(MachineState before, MachineState after,
+                  String destOp, String srcOp, String language) {
+    val destId = regIdx(before, destOp)
+    if (destId < 0) { return before.currentInstruction() }
+    val aVal = before.registers().get(destId)
+    val bVal = addedAmount(before, after, destOp)
+    val result = after.registers().get(destId)
+    val max = wordMaxUnsigned(before.wordSize())
+    val w = before.wordSize()
+    val fullSum = aVal + bVal
+    val overflow = after.carry() && !before.carry()
+    if (isPt(language)) {
+        if (overflow) {
+            return "ADD somou " + destOp + " + " + srcOp + ": " + aVal + " + " + bVal
+                + " = " + fullSum + ". A " + before.machineName() + " usa apenas " + w
+                + " bits (máximo " + max + "). " + fullSum + " é um overflow — apenas os "
+                + w + " bits baixos (" + result + ") são armazenados em " + destOp
+                + ". O Carry (C) é ligado para indicar o overflow."
+        }
+        return "ADD somou " + destOp + " + " + srcOp + ": " + aVal + " + " + bVal
+            + " = " + result + ". Resultado armazenado em " + destOp + "."
+    }
+    if (overflow) {
+        return "ADD computed " + destOp + " + " + srcOp + ": " + aVal + " + " + bVal
+            + " = " + fullSum + ". A " + before.machineName() + " stores only " + w
+            + " bits (max " + max + "). " + fullSum + " overflows — only the low " + w
+            + " bits (" + result + ") are stored in " + destOp
+            + ". The carry flag (C) is set to signal the overflow."
+    }
+    return "ADD computed " + destOp + " + " + srcOp + ": " + aVal + " + " + bVal
+        + " = " + result + ". Stored in " + destOp + "."
+}
+
+String explainSub(MachineState before, MachineState after,
+                  String destOp, String srcOp, String language) {
+    val destId = regIdx(before, destOp)
+    if (destId < 0) { return before.currentInstruction() }
+    val aVal = before.registers().get(destId)
+    val bVal = subtractedAmount(before, after, destOp)
+    val result = after.registers().get(destId)
+    val max = wordMaxUnsigned(before.wordSize())
+    val w = before.wordSize()
+    val borrow = after.carry() && !before.carry()
+    if (isPt(language)) {
+        if (borrow) {
+            val signed = wordToSigned(result, w)
+            return "SUB subtraiu " + destOp + " − " + srcOp + ": " + aVal + " − " + bVal
+                + " = " + signed + ". Negativo: com " + w
+                + " bits sem sinal, o resultado é " + result + " (" + max + " + 1 + " + signed
+                + "). O Carry (C) é ligado como sinal de empréstimo (borrow)."
+        }
+        return "SUB subtraiu " + destOp + " − " + srcOp + ": " + aVal + " − " + bVal
+            + " = " + result + ". Resultado armazenado em " + destOp + "."
+    }
+    if (borrow) {
+        val signed = wordToSigned(result, w)
+        return "SUB computed " + destOp + " − " + srcOp + ": " + aVal + " − " + bVal
+            + " = " + signed + ". Negative: with " + w
+            + "-bit unsigned storage, the result wraps to " + result + " (" + max + " + 1 + "
+            + signed + "). The carry flag (C) signals a borrow."
+    }
+    return "SUB computed " + destOp + " − " + srcOp + ": " + aVal + " − " + bVal
+        + " = " + result + ". Stored in " + destOp + "."
+}
+
+String explainBitwise(MachineState before, MachineState after,
+                      String destOp, String srcOp,
+                      String mnemonic, String symbol, String language) {
+    val destId = regIdx(before, destOp)
+    if (destId < 0) { return before.currentInstruction() }
+    val aVal = before.registers().get(destId)
+    val result = after.registers().get(destId)
+    val w = before.wordSize()
+    // If srcOp is a register, show its value; otherwise just show the operand text.
+    val srcDisplay = if (isReg(srcOp)) srcOp + " (" + regGet(before, srcOp) + ")" else srcOp
+    if (isPt(language)) {
+        return mnemonic + " calculou " + destOp + " " + symbol + " " + srcDisplay
+            + " bit a bit:\n  " + destOp + ": " + toBin(aVal, w)
+            + "\n  " + padRight(srcOp, destOp.length) + ": "
+            + (if (isReg(srcOp)) toBin(regGet(before, srcOp), w) else "(" + srcOp + ")")
+            + "\n  = " + toBin(result, w)
+            + "\n  Resultado em " + destOp + ": " + decAndHex(result, w) + "."
+    }
+    return mnemonic + " computed " + destOp + " " + symbol + " " + srcDisplay + " bitwise:\n  "
+        + destOp + ": " + toBin(aVal, w)
+        + "\n  " + padRight(srcOp, destOp.length) + ": "
+        + (if (isReg(srcOp)) toBin(regGet(before, srcOp), w) else "(" + srcOp + ")")
+        + "\n  = " + toBin(result, w)
+        + "\n  Result in " + destOp + ": " + decAndHex(result, w) + "."
+}
+
+String explainNot(MachineState before, MachineState after,
+                  String destOp, String language) {
+    val destId = regIdx(before, destOp)
+    if (destId < 0) { return before.currentInstruction() }
+    val aVal = before.registers().get(destId)
+    val result = after.registers().get(destId)
+    val w = before.wordSize()
+    if (isPt(language)) {
+        return "NOT inverteu cada bit de " + destOp + ":\n  antes: " + toBin(aVal, w)
+            + "\n  depois: " + toBin(result, w)
+            + "\n  Resultado em " + destOp + ": " + decAndHex(result, w) + "."
+    }
+    return "NOT inverted every bit of " + destOp + ":\n  before: " + toBin(aVal, w)
+        + "\n  after:  " + toBin(result, w)
+        + "\n  Result in " + destOp + ": " + decAndHex(result, w) + "."
+}
+
+String explainJmp(MachineState before, MachineState after,
+                  String addrOp, String language) {
+    if (isPt(language)) {
+        return "JMP desviou incondicionalmente para o endereço " + addrOp + "."
+    }
+    return "JMP jumped unconditionally to address " + addrOp + "."
+}
+
+String explainJcond(MachineState before, MachineState after,
+                    String addrOp, String flagName, String language) {
+    var flagVal = false
+    if (flagName == "Z") { flagVal = before.zero() }
+    if (flagName == "C") { flagVal = before.carry() }
+    if (flagName == "N") { flagVal = before.negative() }
+    if (flagName == "O") { flagVal = before.overflow() }
+    val taken = flagVal
+    if (isPt(language)) {
+        if (taken) {
+            return "J" + flagName + ": flag " + flagName + " estava 1 — desvio tomado para " + addrOp + "."
+        }
+        return "J" + flagName + ": flag " + flagName + " estava 0 — desvio NÃO tomado; execução continua em "
+            + "0x" + toHex(after.pc() as Long, 4) + "."
+    }
+    if (taken) {
+        return "J" + flagName + ": flag " + flagName + " was 1 — jump taken to " + addrOp + "."
+    }
+    return "J" + flagName + ": flag " + flagName + " was 0 — jump NOT taken; execution continues at "
+        + "0x" + toHex(after.pc() as Long, 4) + "."
+}
+
+String explainPrint(MachineState before, MachineState after,
+                    String srcOp, String language) {
+    val val_ = regGet(before, srcOp)
+    if (isPt(language)) {
+        return "PRINT enviou o valor de " + srcOp + " (" + val_ + ") para a saída."
+    }
+    return "PRINT sent the value of " + srcOp + " (" + val_ + ") to output."
+}
+
+// --- multi-step run summary -------------------------------------------------
+
+String explainRun(MachineState before, MachineState after, String language) {
+    val n = after.cycles() - before.cycles()
+    val status = statusName(after.status())
+    if (isPt(language)) {
+        val statusPt = if (status == "HALTED") "parada" else "pausada"
+        return "Executou " + n + " ciclos. Máquina " + statusPt + "."
+    }
+    val statusEn = if (status == "HALTED") "halted" else "paused"
+    return "Executed " + n + " cycles. Machine " + statusEn + "."
+}
+
+// --- the entry point --------------------------------------------------------
+
+String instructionExplanation(MachineState before, MachineState after, String language) {
+    val instr = before.currentInstruction()
+    if (instr == "") { return noExplainYet(language) }
+    // More than one cycle: Run was pressed; explain the run, not one instruction.
+    val cyclesDelta = after.cycles() - before.cycles()
+    if (cyclesDelta != 1) {
+        if (cyclesDelta <= 0) { return noExplainYet(language) }
+        return explainRun(before, after, language)
+    }
+    val mn = firstWord(instr)
+    val ops = afterFirstWord(instr)
+    val oa = opA(ops)
+    val ob = opB(ops)
+    if (mn == "HALT") { return explainHalt(before, after, language) }
+    if (mn == "LOAD") { return explainLoad(before, after, oa, ob, language) }
+    if (mn == "STORE") { return explainStore(before, after, oa, ob, language) }
+    if (mn == "ADD") { return explainAdd(before, after, oa, ob, language) }
+    if (mn == "SUB") { return explainSub(before, after, oa, ob, language) }
+    if (mn == "AND") { return explainBitwise(before, after, oa, ob, "AND", "&", language) }
+    if (mn == "OR") { return explainBitwise(before, after, oa, ob, "OR", "|", language) }
+    if (mn == "XOR") { return explainBitwise(before, after, oa, ob, "XOR", "^", language) }
+    if (mn == "NOT") { return explainNot(before, after, oa, language) }
+    if (mn == "JMP") { return explainJmp(before, after, ops, language) }
+    if (mn == "JZ") { return explainJcond(before, after, ops, "Z", language) }
+    if (mn == "JC") { return explainJcond(before, after, ops, "C", language) }
+    if (mn == "JN") { return explainJcond(before, after, ops, "N", language) }
+    if (mn == "JO") { return explainJcond(before, after, ops, "O", language) }
+    if (mn == "JNZ") { return explainJcondNeg(before, after, ops, "Z", language) }
+    if (mn == "JNC") { return explainJcondNeg(before, after, ops, "C", language) }
+    if (mn == "PRINT") { return explainPrint(before, after, oa, language) }
+    return instr
+}
+
+// JNZ / JNC: jump when flag is NOT set
+String explainJcondNeg(MachineState before, MachineState after,
+                       String addrOp, String flagName, String language) {
+    var flagVal = false
+    if (flagName == "Z") { flagVal = before.zero() }
+    if (flagName == "C") { flagVal = before.carry() }
+    val taken = !flagVal
+    if (isPt(language)) {
+        if (taken) {
+            return "JN" + flagName + ": flag " + flagName + " estava 0 — desvio tomado para " + addrOp + "."
+        }
+        return "JN" + flagName + ": flag " + flagName + " estava 1 — desvio NÃO tomado; execução continua em "
+            + "0x" + toHex(after.pc() as Long, 4) + "."
+    }
+    if (taken) {
+        return "JN" + flagName + ": flag " + flagName + " was 0 — jump taken to " + addrOp + "."
+    }
+    return "JN" + flagName + ": flag " + flagName + " was 1 — jump NOT taken; execution continues at "
+        + "0x" + toHex(after.pc() as Long, 4) + "."
+}
