@@ -18,6 +18,11 @@ Int regB() { return 1 }
 Int firstBankedRegister() { return 2 }
 Int lastBankedRegister() { return 9 }
 
+// P0 (stage B): a plain readable/writable 8-bit register, modelled as its
+// own field on Machine8051 — not banked, not A/B. See docs/8051.md,
+// "Peripherals — stage B" for exactly what is and is not real about it.
+Int regP0() { return 10 }
+
 Bool isBankedRegister(Int id) {
     return id >= firstBankedRegister() && id <= lastBankedRegister()
 }
@@ -39,6 +44,7 @@ Int bankedRegisterAddress(Int id, Int bank) {
 String registerName8051(Int id) {
     if (id == regA()) { return "A" }
     if (id == regB()) { return "B" }
+    if (id == regP0()) { return "P0" }
     if (isBankedRegister(id)) { return "R" + (id - firstBankedRegister()) }
     return "?"
 }
@@ -47,6 +53,7 @@ RegisterLookup8051 lookupRegister8051(String name) {
     val upper = name.toUpperCase()
     if (upper == "A") { return RegisterLookup8051(true, regA()) }
     if (upper == "B") { return RegisterLookup8051(true, regB()) }
+    if (upper == "P0") { return RegisterLookup8051(true, regP0()) }
     if (upper.length == 2 && upper.charAt(0) == 'R') {
         val digit = upper.charAt(1)
         if (digit >= '0' && digit <= '7') {

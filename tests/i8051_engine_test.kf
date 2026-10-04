@@ -197,3 +197,42 @@ test "reset restores everything, and the program runs again identically" {
     assert(statusName(m.status) == "READY")
     assert(m.run(100) == 5, "CALL, RET, PUSH is before CALL — MOV,PUSH,CALL,RET,HALT")
 }
+
+// --- P0 (stage B) -----------------------------------------------------------
+
+test "P0 is a plain readable/writable register, by name" {
+    assert(lookupRegister8051("P0").found)
+    assert(registerName8051(regP0()) == "P0")
+    var m = Machine8051()
+    assert(m.p0 == 0 as Long, "P0 resets to 0, like every other piece of state")
+}
+
+test "MOV P0, #imm and MOV A, P0 really move the byte through the port" {
+    var m = loaded8051("MOV P0, #0xAA\nMOV A, P0\nHALT\n")
+    m.run(100)
+    assert(statusName(m.status) == "HALTED")
+    assert(m.p0 == 0xAA as Long)
+    assert(m.a == 0xAA as Long, "whatever was last written to P0 is what comes back")
+}
+
+test "P0 is usable anywhere a register operand is accepted, not just by MOV" {
+    var m = loaded8051("MOV P0, #0xF0\nMOV R0, #0x0F\nANL A, P0\nORL A, R0\nHALT\n")
+    m.run(100)
+    assert(statusName(m.status) == "HALTED")
+    // A starts at 0: 0 & 0xF0 == 0, then 0 | 0x0F == 0x0F.
+    assert(m.a == 0x0F as Long)
+}
+
+test "reset() puts P0 back to 0" {
+    var m = loaded8051("MOV P0, #0xFF\nHALT\n")
+    m.run(100)
+    assert(m.p0 == 0xFF as Long)
+    m.reset()
+    assert(m.p0 == 0 as Long)
+}
+
+test "P1, P2, P3 are still reserved — only P0 is implemented in stage B" {
+    val r = assembleSource8051("MOV P1, #1\nHALT\n")
+    assert(r.ok() == false)
+    assert(r.diagnostics().get(0).code() == "I51015")
+}

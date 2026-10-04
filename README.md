@@ -123,7 +123,7 @@ below is enforced by the test suite.
 | 6 | Debugger | **done** |
 | 7 | Educational layer | **done** |
 | 8 | Advanced Mode — X, Y, SP, FP, stack, shifts, extra jumps | **done** |
-| 9 | 8051 educational model | stage A done (core + assembler, no UI yet) |
+| 9 | 8051 educational model | stages A-B done (core + assembler + P0, no UI yet) |
 | 10 | Cortex-M3 educational model | not started |
 | 11 | Architecture comparison | not started |
 | 12 | Export | not started |

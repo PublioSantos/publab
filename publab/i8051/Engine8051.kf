@@ -17,7 +17,7 @@ Int internalDataSize8051() { return 128 }
 // touches a register's own byte.
 Int spReset8051() { return 7 }
 
-record MachineState8051(Int a, Int b, List<Int> r, Int pc, Int sp,
+record MachineState8051(Int a, Int b, List<Int> r, Int p0, Int pc, Int sp,
                         Bool carry, Bool auxCarry, Bool overflow, Bool parity,
                         Bool f0, Int bank,
                         Int cycles, MachineStatus status, String errorMessage,
@@ -38,6 +38,9 @@ void codeOverflowFault8051(Int size) {
 class Machine8051 {
     Long a
     Long b
+    // P0 (stage B): a plain readable/writable register, not electrically
+    // modelled (docs/8051.md, "Peripherals — stage B").
+    Long p0
     Memory internalData
     Memory codeMemory
     Psw8051 psw
@@ -52,6 +55,7 @@ class Machine8051 {
     constructor() {
         this.a = 0 as Long
         this.b = 0 as Long
+        this.p0 = 0 as Long
         this.internalData = Memory(internalDataSize8051())
         this.codeMemory = Memory(codeMemorySize8051())
         this.psw = Psw8051()
@@ -75,6 +79,7 @@ class Machine8051 {
         this.codeMemory.loadImage(this.image, 0)
         this.a = 0 as Long
         this.b = 0 as Long
+        this.p0 = 0 as Long
         this.psw.clear()
         this.pc = 0
         this.sp = spReset8051()
@@ -134,6 +139,7 @@ class Machine8051 {
     Long regRead(Int id) {
         if (id == regA()) { return this.a }
         if (id == regB()) { return this.b }
+        if (id == regP0()) { return this.p0 }
         return this.internalData.readByte(this.bankedAddress(id)) as Long
     }
 
@@ -141,6 +147,7 @@ class Machine8051 {
         val stored = wordWrap(value, width8051())
         if (id == regA()) { this.a = stored; return }
         if (id == regB()) { this.b = stored; return }
+        if (id == regP0()) { this.p0 = stored; return }
         this.internalData.writeByte(this.bankedAddress(id), stored as Int)
     }
 
@@ -325,7 +332,7 @@ class Machine8051 {
 
     MachineState8051 snapshot() {
         return MachineState8051(this.a as Int, this.b as Int, this.registerBankSnapshot(),
-            this.pc, this.sp,
+            this.p0 as Int, this.pc, this.sp,
             this.psw.carry, this.psw.auxCarry, this.psw.overflow, parityOf(this.a),
             this.psw.f0, activeBank(this.psw.rs1, this.psw.rs0),
             this.cycles, this.status, this.errorMessage,
