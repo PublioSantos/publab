@@ -132,7 +132,7 @@ test "an unknown instruction is distinguished from an advanced one" {
     val text = renderDiagnostic(d, "en")
     assert(text.contains("'PUSH' belongs to Advanced Mode, which is not implemented yet"))
     assert(text.contains("LOAD, STORE, ADD, SUB, AND, OR, XOR, NOT, JMP, JZ, JC, PRINT, HALT"))
-    assert(renderDiagnostic(d, "pt").contains("As fases 1-2 implementam"))
+    assert(renderDiagnostic(d, "pt").contains("O conjunto do Basic Mode é"))
 }
 
 test "a wrong operand shape says what was expected, in both languages" {

@@ -1,0 +1,112 @@
+package publab.app
+
+// The example programs, embedded as source.
+//
+// The files in examples/ are the source of truth for a human reading the
+// repository, but a browser cannot read them: kof.io has no host in the
+// browser, so the UI cannot open examples/*.pasm the way the test suite does.
+// They are embedded here instead, and tests/embedded_examples_test.kf asserts
+// that each string is byte-for-byte the file on disk — if one drifts from the
+// other, the suite fails.
+
+record ExampleProgram(String name, String title, String source)
+
+String exampleHello() {
+    return "; hello.pasm — the smallest complete PubASM program.\n"
+        + ";\n"
+        + "; The PubVM has no character output: PRINT shows the VALUE of a register\n"
+        + "; (section 13 of the specification), so this program prints 1, not a greeting.\n"
+        + "; Run it with Step to watch PC move from 0x0000 to 0x0003 to 0x0005.\n"
+        + "\n"
+        + "    LOAD A, 1\n"
+        + "    PRINT A\n"
+        + "    HALT\n"
+}
+
+String exampleAddition() {
+    return "; addition.pasm — add two registers and look at the result.\n"
+        + ";\n"
+        + "; On PubVM-8:  A = 30, C = 0, Z = 0, N = 0, O = 0\n"
+        + "\n"
+        + "    LOAD A, 10\n"
+        + "    LOAD B, 20\n"
+        + "    ADD A, B\n"
+        + "    PRINT A\n"
+        + "    HALT\n"
+}
+
+String exampleOverflow() {
+    return "; overflow.pasm — the same program gives a different answer on a different\n"
+        + "; machine. This is the Golden Test of the specification (sections 18 and 48).\n"
+        + ";\n"
+        + "; PubVM-8:   A = 14,  C = 1    (270 does not fit in 8 bits)\n"
+        + "; PubVM-16:  A = 270, C = 0\n"
+        + "; PubVM-32:  A = 270, C = 0\n"
+        + ";\n"
+        + "; All three are the same core with a different word size. The test suite runs\n"
+        + "; this very file on each of them and checks the three answers above.\n"
+        + "\n"
+        + "    LOAD A, 250\n"
+        + "    LOAD B, 20\n"
+        + "    ADD A, B\n"
+        + "    PRINT A\n"
+        + "    HALT\n"
+}
+
+String exampleLoops() {
+    return "; loops.pasm — a countdown, built from SUB, JZ and JMP.\n"
+        + ";\n"
+        + "; The Basic Mode set has no JNZ (that is Advanced Mode, phase 8), so the loop\n"
+        + "; tests for zero and jumps out, then jumps back unconditionally.\n"
+        + ";\n"
+        + "; Output: 3, 2, 1, 0\n"
+        + "\n"
+        + "    LOAD A, 3\n"
+        + "loop:\n"
+        + "    PRINT A\n"
+        + "    SUB A, 1\n"
+        + "    JZ done\n"
+        + "    JMP loop\n"
+        + "done:\n"
+        + "    PRINT A\n"
+        + "    HALT\n"
+}
+
+String exampleMemory() {
+    return "; memory.pasm — write a register to memory and read it back.\n"
+        + ";\n"
+        + "; Watch address 0x0080 in the memory view: it holds 2A (42) after the STORE.\n"
+        + "; Output: 42\n"
+        + "\n"
+        + "    LOAD A, 42\n"
+        + "    STORE [0x80], A\n"
+        + "    LOAD B, [0x80]\n"
+        + "    PRINT B\n"
+        + "    HALT\n"
+}
+
+// The list the laboratory offers, in order.
+List<ExampleProgram> examplePrograms() {
+    var programs = listOf(ExampleProgram("hello.pasm",
+        "the smallest complete program", exampleHello()))
+    programs.add(ExampleProgram("addition.pasm",
+        "ADD between two registers", exampleAddition()))
+    programs.add(ExampleProgram("overflow.pasm",
+        "the word size changes the answer", exampleOverflow()))
+    programs.add(ExampleProgram("loops.pasm",
+        "a loop with SUB, JZ and JMP", exampleLoops()))
+    programs.add(ExampleProgram("memory.pasm",
+        "STORE and LOAD through memory", exampleMemory()))
+    return programs
+}
+
+List<String> exampleNames() {
+    var names: List<String> = listOf()
+    for (var program in examplePrograms()) { names.add(program.name()) }
+    return names
+}
+
+// The program the laboratory opens with.
+String defaultExampleSource() {
+    return exampleOverflow()
+}

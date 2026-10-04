@@ -6,7 +6,7 @@
 
 ```
 ┌─────────────────────────────┐
-│             UI              │  phase 5   — not implemented
+│             UI              │  Main.kf + publab/ui/ (phase 5B)
 ├─────────────────────────────┤
 │      Educational Layer      │  phase 7   — not implemented
 ├─────────────────────────────┤

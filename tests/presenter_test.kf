@@ -1,0 +1,195 @@
+package tests
+
+import publab.machine
+import publab.assembler
+import publab.ui
+
+// The interface renders only strings produced here, so this is where the
+// interface is actually tested. Runs on both targets.
+
+MachineState ranState(String source, MachineConfig config) {
+    val assembled = assembleSource(source, config)
+    assert(assembled.ok(), renderDiagnostics(assembled.diagnostics(), "en"))
+    var machine = Machine(config)
+    machine.load(assembled.image())
+    machine.run(500)
+    return machine.snapshot()
+}
+
+String goldenSource() {
+    return "LOAD A, 250\nLOAD B, 20\nADD A, B\nPRINT A\nHALT\n"
+}
+
+test "padding helpers" {
+    assert(padRight("A", 4) == "A   ")
+    assert(padLeft("14", 5) == "   14")
+    assert(padRight("toolong", 3) == "toolong", "never truncates")
+}
+
+test "a register is shown in decimal, hexadecimal and binary" {
+    val state = ranState(goldenSource(), pubvm8())
+    val rows = registerRows(state)
+    assert(rows.size == 4)
+    assert(rows.get(0).name() == "A")
+    assert(rows.get(0).dec() == "14")
+    assert(rows.get(0).hex() == "0E")
+    assert(rows.get(0).bin() == "00001110")
+    assert(rows.get(1).dec() == "20")
+    assert(rows.get(3).dec() == "0", "D was never written")
+}
+
+test "the register line is aligned to the machine's widest value" {
+    val eight = ranState(goldenSource(), pubvm8())
+    assert(registerRowText(registerRows(eight).get(0), 8)
+        == "A   DEC  14   HEX 0E   BIN 00001110")
+    val sixteen = ranState(goldenSource(), pubvm16())
+    assert(registerRowText(registerRows(sixteen).get(0), 16)
+        == "A   DEC   270   HEX 010E   BIN 0000000100001110")
+}
+
+test "every variant produces one line per register" {
+    for (var config in allMachines()) {
+        val lines = registerLines(ranState(goldenSource(), config))
+        assert(lines.size == 4, config.name())
+        assert(lines.get(0).startsWith("A   DEC"), config.name())
+    }
+    // The 32-bit line carries 32 binary digits.
+    val wide = registerLines(ranState(goldenSource(), pubvm32())).get(0)
+    assert(wide.contains("BIN 00000000000000000000000100001110"), wide)
+}
+
+test "the flags line shows the four flags as digits" {
+    val state = ranState(goldenSource(), pubvm8())
+    assert(flagsText(state) == "C 1    Z 0    N 0    O 0", flagsText(state))
+    val sixteen = ranState(goldenSource(), pubvm16())
+    assert(flagsText(sixteen) == "C 0    Z 0    N 0    O 0")
+    assert(flagDigit(true) == "1" && flagDigit(false) == "0")
+}
+
+test "the status line carries status, PC and cycles, in both languages" {
+    val state = ranState(goldenSource(), pubvm8())
+    val en = statusText(state, "en")
+    assert(en.contains("HALTED"), en)
+    assert(en.contains("PC 0x000B"), en)
+    assert(en.contains("5 cycles"), en)
+    val pt = statusText(state, "pt")
+    assert(pt.contains("PARADA"), pt)
+    assert(pt.contains("5 ciclos"), pt)
+}
+
+test "the current instruction comes from memory, with a translated label" {
+    val assembled = assembleSource(goldenSource(), pubvm8())
+    var machine = Machine(pubvm8())
+    machine.load(assembled.image())
+    assert(currentInstructionLine(machine.snapshot(), "en") == "CURRENT   LOAD A, 250")
+    assert(currentInstructionLine(machine.snapshot(), "pt") == "ATUAL     LOAD A, 250")
+    machine.step()
+    assert(currentInstructionLine(machine.snapshot(), "en").contains("LOAD B, 20"))
+}
+
+test "the machine summary names the variant and its word" {
+    val eight = ranState(goldenSource(), pubvm8())
+    assert(machineSummary(eight, "en") == "PubVM-8     8 bit word    64 KB of memory",
+        machineSummary(eight, "en"))
+    val wide = ranState(goldenSource(), pubvm32())
+    assert(machineSummary(wide, "en").contains("32 bit word"))
+    assert(machineSummary(wide, "pt").contains("32 bits de palavra"))
+}
+
+test "output text, present and absent" {
+    val state = ranState(goldenSource(), pubvm8())
+    assert(outputText(state, "en") == "14")
+    val wide = ranState(goldenSource(), pubvm32())
+    assert(outputText(wide, "en") == "270")
+    val silent = ranState("LOAD A, 1\nHALT\n", pubvm8())
+    assert(outputText(silent, "en") == "(no output — use PRINT)")
+    assert(outputText(silent, "pt") == "(sem saída — use PRINT)")
+    // More than one PRINT becomes one line each.
+    val many = ranState("LOAD A, 3\nPRINT A\nSUB A, 1\nPRINT A\nHALT\n", pubvm8())
+    assert(outputText(many, "en") == "3\n2")
+}
+
+test "the run message describes what the machine really did" {
+    val halted = ranState(goldenSource(), pubvm8())
+    assert(runMessage(halted, "en") == "halted after 5 cycles")
+    assert(runMessage(halted, "pt") == "parada após 5 ciclos")
+
+    // A budget that ends before the program does.
+    val assembled = assembleSource("JMP loop\nloop:\nJMP loop\n", pubvm8())
+    var looping = Machine(pubvm8())
+    looping.load(assembled.image())
+    looping.run(10)
+    val paused = runMessage(looping.snapshot(), "en")
+    assert(paused.contains("did not finish"), paused)
+    assert(paused.contains("10 cycles"), paused)
+    assert(runMessage(looping.snapshot(), "pt").contains("não terminou"))
+
+    // A fault.
+    var broken = Machine(pubvm8())
+    broken.load(listOf(0xEE, 0x00))
+    broken.step()
+    val fault = runMessage(broken.snapshot(), "en")
+    assert(fault.contains("execution fault"), fault)
+    assert(fault.contains("unknown opcode"), fault)
+}
+
+test "an address is rendered with the machine's address width" {
+    assert(addressText(11, 16) == "0x000B")
+    assert(addressText(0, 16) == "0x0000")
+    assert(addressText(65535, 16) == "0xFFFF")
+}
+
+test "every UI string has both languages and they differ where they should" {
+    assert(sourceTitle("en") == "SOURCE" && sourceTitle("pt") == "FONTE")
+    assert(registersTitle("pt") == "REGISTRADORES")
+    assert(outputTitle("pt") == "SAÍDA")
+    assert(diagnosticsTitle("pt") == "DIAGNÓSTICOS")
+    assert(machineTitle("pt") == "MÁQUINA")
+    assert(exampleTitle("pt") == "EXEMPLO")
+    assert(languageTitle("pt") == "IDIOMA")
+    assert(assembleButton("en") == "Assemble" && assembleButton("pt") == "Montar")
+    assert(resetButton("pt") == "Reiniciar")
+    assert(stepButton("pt") == "Passo")
+    assert(runButton("pt") == "Executar")
+    assert(statusWord("HALTED", "en") == "HALTED" && statusWord("HALTED", "pt") == "PARADA")
+    assert(statusWord("ERROR", "pt") == "ERRO")
+    assert(languageLabel("en") == "English" && languageLabel("pt") == "Português")
+    assert(supportedLanguages().size == 2)
+    assert(isPt("pt_BR") && isPt("pt-BR") && isPt("en") == false)
+}
+
+test "Step and Run describe PAUSED differently, because it means different things" {
+    val assembled = assembleSource(goldenSource(), pubvm8())
+    var machine = Machine(pubvm8())
+    machine.load(assembled.image())
+    machine.step()
+    // After one Step, PAUSED means "ready for the next instruction".
+    val stepped = stepMessage(machine.snapshot(), "en")
+    assert(stepped == "paused — 1 cycles, ready for the next step", stepped)
+    assert(stepMessage(machine.snapshot(), "pt").contains("pronta para o próximo passo"))
+    assert(stepped.contains("looping") == false, "a single Step is not a stalled run")
+    // After a Run that hit the budget, the same status means it did not finish.
+    assert(runMessage(machine.snapshot(), "en").contains("did not finish"))
+    // HALTED and ERROR read the same through either control.
+    machine.run(100)
+    assert(stepMessage(machine.snapshot(), "en") == "halted after 5 cycles")
+    assert(runMessage(machine.snapshot(), "en") == "halted after 5 cycles")
+}
+
+test "the state message is control-neutral and covers every status" {
+    val assembled = assembleSource(goldenSource(), pubvm8())
+    var machine = Machine(pubvm8())
+    assert(currentStateMessage(machine.snapshot(), false, 0, "en").contains("nothing assembled"))
+    machine.load(assembled.image())
+    assert(currentStateMessage(machine.snapshot(), true, 12, "en")
+        == "assembled: 12 bytes loaded into memory")
+    assert(currentStateMessage(machine.snapshot(), true, 12, "pt").contains("montado: 12 bytes"))
+    machine.step()
+    assert(currentStateMessage(machine.snapshot(), true, 12, "en").contains("paused"))
+    machine.run(100)
+    assert(currentStateMessage(machine.snapshot(), true, 12, "en") == "halted after 5 cycles")
+    var broken = Machine(pubvm8())
+    broken.load(listOf(0xEE))
+    broken.step()
+    assert(currentStateMessage(broken.snapshot(), true, 1, "en").contains("execution fault"))
+}

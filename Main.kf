@@ -1,0 +1,297 @@
+import publab.machine
+import publab.assembler
+import publab.app
+import publab.ui
+
+// PubLab — the laboratory window.
+//
+// This file is deliberately thin: it builds the widget tree, wires the
+// controls to publab.ui's controller, and copies strings produced by
+// publab.ui's presenter into labels. It contains no machine logic, no
+// formatting rules and no translatable sentence — those live in packages that
+// the test suite can reach, because widgets only render on the JS target.
+//
+// Run it:   kof run Main.kf --target js
+// Build it: kof build . --target js --output build/ui
+
+// The widget handles the refresh needs to reach. Kof widget handles are Ints
+// and a lambda captures a read-only snapshot of its environment, so the
+// handles live in static fields — the snapshot of a handle still points at
+// the real widget.
+class Ui {
+    static Window window = Window("PubLab")
+    static Textarea editor = Textarea("")
+    static Select machines = Select(listOf("PubVM-8"))
+    static Select examples = Select(listOf("overflow.pasm"))
+    static Select languages = Select(listOf("English"))
+
+    static Label slogan = Label("")
+    static Label machineSummary = Label("")
+    static Label status = Label("")
+    static Label current = Label("")
+    static Label message = Label("")
+    static Label flags = Label("")
+    static Label output = Label("")
+    static Label diagnostics = Label("")
+
+    static Label regA = Label("")
+    static Label regB = Label("")
+    static Label regC = Label("")
+    static Label regD = Label("")
+
+    static Label sourceTitle = Label("")
+    static Label registersTitle = Label("")
+    static Label flagsTitle = Label("")
+    static Label outputTitle = Label("")
+    static Label diagnosticsTitle = Label("")
+    static Label machineTitle = Label("")
+    static Label exampleTitle = Label("")
+    static Label languageTitle = Label("")
+
+    static Button assembleButton = Button("", () -> {})
+    static Button resetButton = Button("", () -> {})
+    static Button stepButton = Button("", () -> {})
+    static Button runButton = Button("", () -> {})
+}
+
+Color textColor() { return Color(230, 230, 242) }
+Color focusColor() { return Color(125, 211, 252) }
+Color successColor() { return Color(52, 211, 153) }
+Color dataColor() { return Color(251, 191, 36) }
+Color errorColor() { return Color(248, 113, 113) }
+Color dimColor() { return Color(110, 120, 150) }
+
+Label sectionTitle(Label label) {
+    label.fontSize = 11
+    label.bold = true
+    label.color = dimColor()
+    return label
+}
+
+// Every string in the window comes from the real machine state, through the
+// presenter. Called after every control.
+void refresh() {
+    val state = labState()
+    val language = labLanguage()
+
+    Ui.machineSummary.text = machineSummary(state, language)
+    Ui.status.text = statusText(state, language)
+    Ui.current.text = currentInstructionLine(state, language)
+    Ui.message.text = labMessage()
+    Ui.flags.text = flagsText(state)
+    Ui.output.text = outputText(state, language)
+
+    val registers = registerLines(state)
+    Ui.regA.text = registers.get(0)
+    Ui.regB.text = registers.get(1)
+    Ui.regC.text = registers.get(2)
+    Ui.regD.text = registers.get(3)
+
+    if (labDiagnostics().length > 0) {
+        Ui.diagnostics.text = labDiagnostics()
+    } else {
+        Ui.diagnostics.text = emptyDiagnosticsMessage(language)
+    }
+
+    val status = statusName(state.status())
+    if (status == "ERROR") {
+        Ui.status.color = errorColor()
+    } else if (status == "HALTED") {
+        Ui.status.color = successColor()
+    } else {
+        Ui.status.color = focusColor()
+    }
+}
+
+// The labels that are not machine state: panel titles and control captions.
+// Re-applied when the language changes.
+void relabel() {
+    val language = labLanguage()
+    Ui.slogan.text = taglineIn(language) + "  ·  " + productSlogan()
+    Ui.sourceTitle.text = sourceTitle(language)
+    Ui.registersTitle.text = registersTitle(language)
+    Ui.flagsTitle.text = flagsTitle(language)
+    Ui.outputTitle.text = outputTitle(language)
+    Ui.diagnosticsTitle.text = diagnosticsTitle(language)
+    Ui.machineTitle.text = machineTitle(language)
+    Ui.exampleTitle.text = exampleTitle(language)
+    Ui.languageTitle.text = languageTitle(language)
+    Ui.assembleButton.text = assembleButton(language)
+    Ui.resetButton.text = resetButton(language)
+    Ui.stepButton.text = stepButton(language)
+    Ui.runButton.text = runButton(language)
+}
+
+// --- control handlers ---
+//
+// Every lambda body is a single call to one of these. A widget bind
+// (`label.text = ...`) written INSIDE a lambda makes the JVM backend emit a
+// putfield against the widget type while the handle is an int, which fails
+// bytecode verification at class load — see notes/kof-compiler-findings.md,
+// D-3. Keeping handler bodies in named functions also keeps the wiring
+// readable.
+
+void onAssemble() {
+    labAssemble(Ui.editor.text())
+    refresh()
+}
+
+void onReset() {
+    labReset()
+    refresh()
+}
+
+void onStep() {
+    labStep()
+    refresh()
+}
+
+void onRun() {
+    labRun()
+    refresh()
+}
+
+void onMachineChange() {
+    labSelectMachine(Ui.machines.selected())
+    refresh()
+}
+
+void onExampleChange() {
+    // setText, not `editor.text = …`: the `.text =` bind on a Textarea fails
+    // bytecode verification on the JVM backend — see
+    // notes/kof-compiler-findings.md, D-3. Label and Input are unaffected.
+    Ui.editor.setText(labExampleSource(Ui.examples.selected()))
+    refresh()
+}
+
+void onLanguageChange() {
+    labSetLanguage(supportedLanguages().get(Ui.languages.selected()))
+    relabel()
+    refresh()
+}
+
+main() {
+    val panel = Style("background: #1A1E2E; color: #E6E6F2; padding: 14; border-radius: 6")
+    val root = Style("background: #12151F; color: #E6E6F2; padding: 16; border-radius: 8")
+
+    Ui.window = Window(productName() + " — " + productTagline())
+    Ui.window.theme = Theme.dark()
+    Ui.window.size(1120, 940)
+
+    // --- header: product identity, from the brand module ---
+    var title = Label(productName())
+    title.fontSize = 24
+    title.bold = true
+    title.color = focusColor()
+    Ui.slogan = Label("")
+    Ui.slogan.fontSize = 12
+    Ui.slogan.color = dimColor()
+    var header = Row(listOf(title, Ui.slogan))
+
+    // --- footer: the Kof attribution, plain ---
+    // White text and nothing else: no underline, no accent colour, no hover
+    // treatment. The attribution is a plain line in the footer, not a
+    // decorated badge. Its text and URL come from the brand module, which
+    // stays the single source for both.
+    // The Style goes through a `val` on purpose. `setStyle(Style("…"))` with
+    // the literal written inline as the argument compiles and runs, but the
+    // style never reaches the runtime's registry, so it is a SILENT no-op —
+    // see notes/kof-compiler-findings.md, D-4. Do not inline it back.
+    val footer = Style("color: #ffffff; text-decoration: none")
+    var poweredBy = Link(poweredByLabel(), poweredByUrl())
+    poweredBy.setStyle(footer)
+
+    // --- selectors: machine, example, language ---
+    Ui.machineTitle = sectionTitle(Label(""))
+    Ui.machines = Select(labMachineNames())
+    Ui.machines.setSelected(labSelectedMachine())
+
+    Ui.exampleTitle = sectionTitle(Label(""))
+    Ui.examples = Select(labExampleNames())
+    Ui.examples.setSelected(2)
+
+    Ui.languageTitle = sectionTitle(Label(""))
+    var languageNames: List<String> = listOf()
+    for (var code in supportedLanguages()) { languageNames.add(languageLabel(code)) }
+    Ui.languages = Select(languageNames)
+    Ui.languages.setSelected(0)
+
+    var selectors = Row(listOf(Ui.machineTitle, Ui.machines,
+        Ui.exampleTitle, Ui.examples,
+        Ui.languageTitle, Ui.languages))
+
+    // --- source editor ---
+    Ui.sourceTitle = sectionTitle(Label(""))
+    Ui.editor = Textarea(labDefaultSource())
+    Ui.editor.setRows(16)
+    Ui.editor.setId("pubasm-source")
+
+    // --- controls ---
+    Ui.assembleButton = Button("", () -> onAssemble())
+    Ui.resetButton = Button("", () -> onReset())
+    Ui.stepButton = Button("", () -> onStep())
+    Ui.runButton = Button("", () -> onRun())
+    var controls = Row(listOf(Ui.assembleButton, Ui.resetButton,
+        Ui.stepButton, Ui.runButton))
+
+    Ui.message = Label("")
+    Ui.message.fontSize = 12
+    Ui.message.color = dataColor()
+
+    // --- machine state ---
+    Ui.machineSummary = Label("")
+    Ui.machineSummary.color = dimColor()
+    Ui.status = Label("")
+    Ui.status.bold = true
+    Ui.current = Label("")
+    Ui.current.color = dataColor()
+
+    Ui.registersTitle = sectionTitle(Label(""))
+    Ui.regA = Label("")
+    Ui.regB = Label("")
+    Ui.regC = Label("")
+    Ui.regD = Label("")
+    var registersPanel = View(panel)
+    registersPanel.bind(Column(listOf(Ui.registersTitle,
+        Ui.regA, Ui.regB, Ui.regC, Ui.regD)))
+
+    Ui.flagsTitle = sectionTitle(Label(""))
+    Ui.flags = Label("")
+    Ui.flags.color = focusColor()
+    var flagsPanel = View(panel)
+    flagsPanel.bind(Column(listOf(Ui.flagsTitle, Ui.flags)))
+
+    // --- output and diagnostics ---
+    Ui.outputTitle = sectionTitle(Label(""))
+    Ui.output = Label("")
+    Ui.output.color = successColor()
+    var outputPanel = View(panel)
+    outputPanel.bind(Column(listOf(Ui.outputTitle, Ui.output)))
+
+    Ui.diagnosticsTitle = sectionTitle(Label(""))
+    Ui.diagnostics = Label("")
+    Ui.diagnostics.color = errorColor()
+    var diagnosticsPanel = View(panel)
+    diagnosticsPanel.bind(Column(listOf(Ui.diagnosticsTitle, Ui.diagnostics)))
+
+    // --- selector events ---
+    Ui.machines.on("change", (e: Event) -> onMachineChange())
+    Ui.examples.on("change", (e: Event) -> onExampleChange())
+    Ui.languages.on("change", (e: Event) -> onLanguageChange())
+
+    // --- compose ---
+    var body = Column(listOf(header, Hr(), selectors, Hr(),
+        Ui.sourceTitle, Ui.editor, controls, Ui.message, Hr(),
+        Ui.machineSummary, Ui.status, Ui.current, Hr(),
+        Row(listOf(registersPanel, flagsPanel)),
+        outputPanel, diagnosticsPanel,
+        Hr(), poweredBy))
+    var shell = View(root)
+    shell.bind(body)
+    Ui.window.bind(shell)
+
+    labSelectMachine(0)
+    relabel()
+    refresh()
+    Ui.window.show()
+}

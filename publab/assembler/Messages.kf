@@ -27,9 +27,9 @@ String severityWord(String severity, String language) {
 
 String basicSetSentence(String language) {
     if (isPortuguese(language)) {
-        return "As fases 1-2 implementam o conjunto do Basic Mode: LOAD, STORE, ADD, SUB, AND, OR, XOR, NOT, JMP, JZ, JC, PRINT, HALT."
+        return "O conjunto do Basic Mode é: LOAD, STORE, ADD, SUB, AND, OR, XOR, NOT, JMP, JZ, JC, PRINT, HALT."
     }
-    return "Phases 1-2 implement the Basic Mode set: LOAD, STORE, ADD, SUB, AND, OR, XOR, NOT, JMP, JZ, JC, PRINT, HALT."
+    return "The Basic Mode set is: LOAD, STORE, ADD, SUB, AND, OR, XOR, NOT, JMP, JZ, JC, PRINT, HALT."
 }
 
 String messageTemplate(String code, String language) {

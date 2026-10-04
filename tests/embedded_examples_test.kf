@@ -1,0 +1,68 @@
+package tests
+
+import kof.io
+import publab.machine
+import publab.assembler
+import publab.app
+
+// The drift guard between examples/*.pasm on disk and the copies embedded in
+// publab/app/Examples.kf for the browser. This test reads files, so it is a
+// JVM/host test by nature — the browser is exactly the place that cannot do
+// it, which is why the embedded copies exist.
+
+void assertSameAsFile(String name, String embedded) {
+    String? onDisk = File("examples/" + name).readText()
+    if (onDisk != null) {
+        assert(embedded == onDisk,
+            name + " drifted: the embedded copy and examples/" + name
+                + " are no longer identical")
+    } else {
+        assert(false, "could not read examples/" + name)
+    }
+}
+
+test "every embedded example is byte-for-byte the file on disk" {
+    for (var program in examplePrograms()) {
+        assertSameAsFile(program.name(), program.source())
+    }
+}
+
+test "the embedded list covers every example file" {
+    val names = exampleNames()
+    assert(names.size == 5)
+    assert(names.get(0) == "hello.pasm")
+    assert(names.get(2) == "overflow.pasm")
+    var found = 0
+    for (var entry in Directory("examples").list()) {
+        if (entry.endsWith(".pasm")) {
+            found = found + 1
+            assert(names.contains(entry), entry + " is on disk but not embedded")
+        }
+    }
+    assert(found == names.size, "found " + found + " .pasm files for " + names.size + " embedded")
+}
+
+test "every embedded example assembles and runs on PubVM-8" {
+    for (var program in examplePrograms()) {
+        val assembled = assembleSource(program.source(), pubvm8())
+        assert(assembled.ok(), program.name() + ": "
+            + renderDiagnostics(assembled.diagnostics(), "en"))
+        var machine = Machine(pubvm8())
+        machine.load(assembled.image())
+        machine.run(1000)
+        assert(statusName(machine.status) == "HALTED", program.name() + " did not halt")
+    }
+}
+
+test "the laboratory opens with a program that shows the word size" {
+    assert(defaultExampleSource() == exampleOverflow())
+    // The point of opening with this one: the same source, three answers.
+    var eight = Machine(pubvm8())
+    eight.load(assembleSource(defaultExampleSource(), pubvm8()).image())
+    eight.run(100)
+    var sixteen = Machine(pubvm16())
+    sixteen.load(assembleSource(defaultExampleSource(), pubvm16()).image())
+    sixteen.run(100)
+    assert(eight.output.get(0) == "14")
+    assert(sixteen.output.get(0) == "270")
+}

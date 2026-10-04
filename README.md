@@ -69,7 +69,7 @@ unless it is covered by the test suite.
 | 3 | PubVM-16 (same core, wider word) | **done** |
 | 4 | PubVM-32 (same core, wider word) | **done** |
 | 5A | JS-target parity for the core | **done** |
-| 5B | Minimal UI | not started |
+| 5B | Minimal UI | **done** |
 | 6 | Debugger | not started |
 | 7 | Educational layer | not started |
 | 8 | Advanced Mode — X, Y, SP, FP, stack, shifts, extra jumps | not started |
@@ -84,8 +84,19 @@ validated end to end — `tests/matrix_test.kf` runs the whole Basic Mode
 instruction set, the encoding, immediates, memory, PC, labels, branches and
 all four flags over every variant, from identical PubASM source.
 
-There is **no user interface yet**. The machine is driven from the test suite
-and from Kof code.
+The laboratory window is the minimal interface of phase 5B: a PubASM editor, a
+machine selector, an example selector, a language selector, the four controls,
+the registers in decimal/hexadecimal/binary, the flags, the status with PC and
+cycle count, the current instruction read back out of memory, the output and
+the diagnostics. It renders in the browser from the same core the tests run.
+
+```bash
+kof run Main.kf --target js
+```
+
+What it does **not** have yet: the memory view, the stack, change
+highlighting, Pause, and the educational explanations — those are phases 6
+to 8.
 
 Advanced Mode instructions (`PUSH`, `POP`, `CALL`, `RET`, `SHL`, `SHR`, `ROL`,
 `ROR`, `JN`, `JO`, `JNZ`, `JNC`, `ENTER`, `LEAVE`) and the registers `X`, `Y`,
@@ -94,13 +105,12 @@ rather than reporting them as unknown.
 
 ## Attribution on screen
 
-PubLab displays **Powered by: Kof**, linking to
-<https://github.com/KofLang/Kof4j>, next to the product name.
+PubLab displays **Powered by: Kof** in the footer of the window, as a plain
+line linking to <https://github.com/KofLang/Kof4j> — no styling applied to it.
 
-There is no interface yet (phase 5B), so the attribution lives in
-`publab/app/Brand.kf` as the single source of truth the interface will render
-— `poweredByLabel()` and `poweredByUrl()` — rather than as a string the UI
-could forget. It is covered by `tests/brand_test.kf`.
+The text and the URL live in `publab/app/Brand.kf` as the single source the
+interface reads — `poweredByLabel()` and `poweredByUrl()` — rather than as a
+string the UI could forget or let drift. Covered by `tests/brand_test.kf`.
 
 ## Running the tests
 

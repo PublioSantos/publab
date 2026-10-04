@@ -1,0 +1,165 @@
+package publab.ui
+
+import publab.machine
+import publab.assembler
+import publab.app
+
+// The laboratory's controller. It owns the one real machine the interface
+// observes, and it is the only place the interface is allowed to change it.
+//
+// The state lives in static fields because a Kof lambda captures a read-only
+// snapshot of its environment: a click handler that closed over a `Machine`
+// variable would be acting on a copy frozen at build time. Reaching the
+// machine through these functions means every button acts on the real one.
+//
+// Nothing here renders. That is what lets the whole controller be tested on
+// the JVM as well as on JS, even though widgets only draw on JS.
+
+class Lab {
+    static Machine machine = Machine(pubvm8())
+    static MachineConfig config = pubvm8()
+    static String language = "en"
+    static String diagnostics = ""
+    static String message = ""
+    static Bool assembled = false
+    static Int imageBytes = 0
+}
+
+// A run from the interface must end. A program can loop forever, and a
+// browser tab that never returns is not a laboratory.
+Int labRunBudget() {
+    return 200000
+}
+
+MachineConfig labConfig() {
+    return Lab.config
+}
+
+String labLanguage() {
+    return Lab.language
+}
+
+String labDiagnostics() {
+    return Lab.diagnostics
+}
+
+String labMessage() {
+    return Lab.message
+}
+
+Bool labAssembled() {
+    return Lab.assembled
+}
+
+Int labImageBytes() {
+    return Lab.imageBytes
+}
+
+// The complete, immutable reading the interface renders from.
+MachineState labState() {
+    return Lab.machine.snapshot()
+}
+
+List<String> labMachineNames() {
+    var names: List<String> = listOf()
+    for (var machine in allMachines()) { names.add(machine.name()) }
+    return names
+}
+
+List<String> labExampleNames() {
+    return exampleNames()
+}
+
+String labExampleSource(Int index) {
+    var safe = index
+    if (safe < 0) { safe = 0 }
+    if (safe >= examplePrograms().size) { safe = 0 }
+    return examplePrograms().get(safe).source()
+}
+
+String labDefaultSource() {
+    return defaultExampleSource()
+}
+
+void labSetLanguage(String language) {
+    Lab.language = language
+    // The standing message was written in the previous language; re-derive it
+    // from the machine so the whole window speaks one language.
+    Lab.message = currentStateMessage(Lab.machine.snapshot(), Lab.assembled,
+        Lab.imageBytes, language)
+}
+
+// Switching machine discards whatever was loaded: an image is encoded for one
+// word size — the immediates have that width — so it is not transferable.
+void labSelectMachine(Int index) {
+    var safe = index
+    if (safe < 0) { safe = 0 }
+    if (safe >= allMachines().size) { safe = 0 }
+    Lab.config = allMachines().get(safe)
+    Lab.machine = Machine(Lab.config)
+    Lab.assembled = false
+    Lab.imageBytes = 0
+    Lab.diagnostics = ""
+    Lab.message = notAssembledMessage(Lab.language)
+}
+
+Int labSelectedMachine() {
+    var index = 0
+    var i = 0
+    for (var machine in allMachines()) {
+        if (machine.name() == Lab.config.name()) { index = i }
+        i = i + 1
+    }
+    return index
+}
+
+// Assembles the editor's text for the selected machine and, when it is clean,
+// loads the image. A failed assembly leaves an empty machine on purpose: a
+// program that did not assemble must never appear to be running.
+Bool labAssemble(String source) {
+    val result = assembleSource(source, Lab.config)
+    Lab.diagnostics = renderDiagnostics(result.diagnostics(), Lab.language)
+    Lab.machine = Machine(Lab.config)
+    if (result.ok()) {
+        Lab.machine.load(result.image())
+        Lab.assembled = true
+        Lab.imageBytes = result.byteCount()
+        Lab.message = assembledMessage(result.byteCount(), Lab.language)
+    } else {
+        Lab.assembled = false
+        Lab.imageBytes = 0
+        Lab.message = assemblyFailedMessage(Lab.language)
+    }
+    return result.ok()
+}
+
+// Back to the state right after Assemble: memory rewritten from the image,
+// registers, flags, output and cycles cleared.
+void labReset() {
+    Lab.machine.reset()
+    if (Lab.assembled) {
+        Lab.message = assembledMessage(Lab.imageBytes, Lab.language)
+    } else {
+        Lab.message = notAssembledMessage(Lab.language)
+    }
+}
+
+Bool labStep() {
+    if (!Lab.assembled) {
+        Lab.message = notAssembledMessage(Lab.language)
+        return false
+    }
+    val executed = Lab.machine.step()
+    Lab.message = stepMessage(Lab.machine.snapshot(), Lab.language)
+    return executed
+}
+
+Int labRun() {
+    if (!Lab.assembled) {
+        Lab.message = notAssembledMessage(Lab.language)
+        return 0
+    }
+    val cycles = Lab.machine.run(labRunBudget())
+    Lab.message = runMessage(Lab.machine.snapshot(), Lab.language)
+    return cycles
+}

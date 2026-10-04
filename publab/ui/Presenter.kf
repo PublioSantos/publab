@@ -1,0 +1,147 @@
+package publab.ui
+
+import publab.machine
+
+// The presentation layer: it turns a MachineState into the exact strings the
+// interface shows, and nothing else. No widget, no machine mutation.
+//
+// This is what makes the interface testable. Rendering is KofJS only, so a
+// widget tree cannot be asserted on the JVM — but every string that reaches a
+// widget is produced here, and these functions run on both targets.
+
+String padRight(String text, Int width) {
+    var out = text
+    while (out.length < width) { out = out + " " }
+    return out
+}
+
+String padLeft(String text, Int width) {
+    var out = text
+    while (out.length < width) { out = " " + out }
+    return out
+}
+
+// --- registers (section 27: decimal, hexadecimal and binary) ---
+
+record RegisterRow(String name, String dec, String hex, String bin)
+
+List<RegisterRow> registerRows(MachineState state) {
+    var rows = listOf(RegisterRow("", "", "", ""))
+    rows.clear()
+    var i = 0
+    while (i < state.registers().size) {
+        val value = state.registers().get(i)
+        rows.add(RegisterRow(state.registerNames().get(i),
+            "" + value,
+            wordToHex(value, state.wordSize()),
+            wordToBin(value, state.wordSize())))
+        i = i + 1
+    }
+    return rows
+}
+
+// "A    DEC         14   HEX 0E   BIN 00001110"
+String registerRowText(RegisterRow row, Int wordSize) {
+    val decimalWidth = ("" + wordMaxUnsigned(wordSize)).length
+    return padRight(row.name(), 4)
+        + "DEC " + padLeft(row.dec(), decimalWidth)
+        + "   HEX " + row.hex()
+        + "   BIN " + row.bin()
+}
+
+List<String> registerLines(MachineState state) {
+    var lines: List<String> = listOf()
+    for (var row in registerRows(state)) {
+        lines.add(registerRowText(row, state.wordSize()))
+    }
+    return lines
+}
+
+// --- flags ---
+
+String flagDigit(Bool on) {
+    if (on) { return "1" }
+    return "0"
+}
+
+// "C 1    Z 0    N 0    O 0"
+String flagsText(MachineState state) {
+    return "C " + flagDigit(state.carry())
+        + "    Z " + flagDigit(state.zero())
+        + "    N " + flagDigit(state.negative())
+        + "    O " + flagDigit(state.overflow())
+}
+
+// --- status ---
+
+String addressText(Int address, Int addressBits) {
+    return "0x" + toHex(address as Long, addressBytes(addressBits) * 2)
+}
+
+// "HALTED    PC 0x000B    5 cycles"
+String statusText(MachineState state, String language) {
+    return padRight(statusWord(statusName(state.status()), language), 12)
+        + "PC " + addressText(state.pc(), state.addressBits())
+        + "    " + state.cycles() + " " + cyclesWord(language)
+}
+
+// "CURRENT   HALT"
+String currentInstructionLine(MachineState state, String language) {
+    return padRight(currentWord(language), 10) + state.currentInstruction()
+}
+
+// "PubVM-8    8 bit word    64 KB of memory"
+String machineSummary(MachineState state, String language) {
+    return padRight(state.machineName(), 12)
+        + state.wordSize() + " " + wordSizeWord(language)
+        + "    64 KB " + memoryWord(language)
+}
+
+// --- output ---
+
+String outputText(MachineState state, String language) {
+    if (state.output().size == 0) { return noOutputMessage(language) }
+    var out = ""
+    for (var line in state.output()) {
+        if (out.length > 0) { out = out + "\n" }
+        out = out + line
+    }
+    return out
+}
+
+// --- the message under the controls ---
+
+// Describes what the machine did, from its real state. ERROR and HALTED are
+// the machine's own words; PAUSED after a run means the budget ended.
+String runMessage(MachineState state, String language) {
+    val status = statusName(state.status())
+    if (status == "ERROR") { return errorMessage(state.errorMessage(), language) }
+    if (status == "HALTED") { return haltedMessage(state.cycles(), language) }
+    if (status == "PAUSED") { return didNotFinishMessage(state.cycles(), language) }
+    return assembledMessage(0, language)
+}
+
+// After a single Step, PAUSED means "ready for the next instruction" — not
+// what it means after a Run, where it means the cycle budget ended. The two
+// controls describe the same status differently because it means different
+// things, and saying "may be looping forever" after one Step would be false.
+String stepMessage(MachineState state, String language) {
+    val status = statusName(state.status())
+    if (status == "ERROR") { return errorMessage(state.errorMessage(), language) }
+    if (status == "HALTED") { return haltedMessage(state.cycles(), language) }
+    return pausedAtMessage(state.cycles(), language)
+}
+
+// A description of where the machine IS, without claiming which control put
+// it there. Used when the language changes: the previous message was written
+// in the previous language, and re-deriving it from state keeps the whole
+// window in one language.
+String currentStateMessage(MachineState state, Bool assembled, Int imageBytes,
+                           String language) {
+    val status = statusName(state.status())
+    if (status == "ERROR") { return errorMessage(state.errorMessage(), language) }
+    if (status == "HALTED") { return haltedMessage(state.cycles(), language) }
+    if (status == "PAUSED") { return pausedAtMessage(state.cycles(), language) }
+    if (assembled) { return assembledMessage(imageBytes, language) }
+    return notAssembledMessage(language)
+}

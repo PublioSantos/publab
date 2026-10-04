@@ -16,7 +16,7 @@ String productSlogan() {
     return "See the machine."
 }
 
-// Shown on screen, next to the product name.
+// Shown in the footer of the window, as a plain line.
 String poweredByLabel() {
     return "Powered by: Kof"
 }

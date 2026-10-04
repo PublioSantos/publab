@@ -228,3 +228,111 @@ if/else no backend JS, e pode ser o mesmo defeito com outra cara. O D-2 toca o
 SG-006 (curto-circuito), que está marcado como corrigido desde 09/09, então
 vale confirmar se indexação está fora do escopo daquela correção por decisão
 ou por omissão.
+
+---
+
+# Fase 5B — divergência na UI (04/10/2026)
+
+**Nada reportado como issue** — nota local.
+
+## D-3. `textarea.text = …` não passa a verificação de bytecode no JVM
+
+O bind `.text =` em um **`Textarea`** quebra no target JVM. Em `Label` e em
+`Input` o mesmo bind funciona.
+
+```kof
+main() {
+    var t = Textarea("a")
+    t.text = "b"        // JVM: quebra
+    println("ok")
+}
+```
+
+Como a falha aparece depende de onde o bind está:
+
+| onde | o que o JVM diz |
+|---|---|
+| direto em `main`/função | `Erro: os componentes de runtime do JavaFX não foram encontrados` |
+| dentro de uma lambda | `VerifyError: Bad type on operand stack in putfield` — `Type integer (current frame, stack[0]) is not assignable to 'kof/ui/Textarea'` |
+
+A segunda mensagem é a que explica a primeira: handles de `kof.ui` são `Int`
+em runtime, e o emissor do bind produz um `putfield` tipado com a classe do
+widget. A mensagem do JavaFX é só como o launcher do JVM reporta a mesma
+falha de verificação quando ela acontece na classe de entrada — o mesmo
+engano já registrado na migração do mytarot.
+
+Confirmado por eliminação, um caso por vez:
+
+| forma | JVM |
+|---|---|
+| `label.text = "x"` (inclusive dentro de lambda) | ok |
+| `input.text = "x"` | ok |
+| `textarea.setText("x")` (inclusive dentro de lambda) | ok |
+| `textarea.text = "x"` | **quebra** |
+| `textarea.text()` (leitura) | ok |
+| `static Label`/`static Textarea` como campo, `Select`, `Link`, `Hr`, `View.bind`, `Theme`, `window.size`, `label.color/fontSize/bold`, listas heterogêneas de widgets | ok |
+
+**No target JS não há falha** — a UI é KofJS e o laboratório funciona no
+navegador com qualquer das duas formas. Mas a documentação do Kof promete que
+o programa *roda* nos outros targets (só não renderiza), então um crash no
+JVM contradiz o contrato da própria linguagem.
+
+### Correção no PubLab
+
+`Main.kf` usa `Ui.editor.setText(...)` no handler do seletor de exemplos. Uma
+linha, com comentário apontando para esta nota. Depois disso
+`kof run Main.kf` no JVM roda até o fim (sem renderizar, como documentado), e
+`setText` foi confirmado **real no JS** pela verificação no navegador: trocar
+o exemplo no seletor realmente troca o conteúdo do editor.
+
+### Observação adicional
+
+A primeira versão do `Main.kf` tinha corpos de lambda com várias statements,
+incluindo o bind. Mover cada corpo para uma função nomeada
+(`onAssemble`, `onStep`, …) foi feito junto — não é workaround do D-3 (o
+`setText` é), é só o estilo que deixa o problema visível e o wiring legível.
+
+## Antes de abrir issue
+
+Checar se `Textarea.text` está no contrato (`learn/35-kof-ui.md` documenta
+`i.text = …` para `Input` e só `Textarea(text)`/`text()` para `Textarea`) —
+pode ser que o bind de escrita em `Textarea` nunca tenha sido prometido, e
+então o bug real é o **typer aceitar** em vez do backend falhar. Nesse caso o
+relato muda: não é "o JVM quebra", é "deveria ser erro de compilação".
+
+## D-4. `setStyle(Style("…"))` com o literal inline é no-op silencioso (JS)
+
+```kof
+// não aplica nada — nenhum erro, nenhum aviso
+link.setStyle(Style("color: #ffffff; text-decoration: none"))
+
+// aplica
+val footer = Style("color: #ffffff; text-decoration: none")
+link.setStyle(footer)
+```
+
+O runtime JS guarda os estilos em `window.__kofStyles` e
+`kofUiWidgetSetStyle(widget, styleId)` resolve por id. Quando o `Style(...)`
+é escrito **inline como argumento**, o estilo nunca é registrado: o id chega
+ao runtime apontando para nada e `kofUiApplyStyle` retorna sem fazer nada.
+Medido no navegador: com o literal inline, `Object.keys(__kofStyles).length`
+era 2 (só os dois `val` passados para `View(...)`); hoistando para um `val`
+virou 3 e o elemento ganhou `style="color: rgb(255, 255, 255);
+text-decoration: none;"`.
+
+É a pior categoria de defeito — **silencioso**. Não há diagnóstico no
+`kof check`, não há erro em runtime, o widget simplesmente não muda. Custou
+uma investigação inteira porque o sintoma visível era outro: um
+`kof-runtime.mjs` em cache de um build anterior derrubava a página com
+`does not provide an export named 'kofUiWidgetSetStyle'`, apontando para o
+runtime em vez de para o cache. (Isso rendeu o `Cache-Control: no-store` no
+servidor de dev, que vale por si: o compilador emite só as funções de runtime
+que o programa usa, então o arquivo muda de forma entre builds.)
+
+### Antes de abrir issue
+
+Checar se `Style` como argumento inline é promovido/registrado em algum ponto
+do emissor (`JsBackend`, registro de `__kofStyles`) — e conferir se a mesma
+coisa acontece com `View(Style("…"))` inline, que não testei. O caminho
+`val` + `View(val)` e `val` + `setStyle(val)` estão ambos verificados
+funcionando.

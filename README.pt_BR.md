@@ -72,7 +72,7 @@ estar coberto pela suíte de testes.
 | 3 | PubVM-16 (mesmo núcleo, palavra maior) | **concluída** |
 | 4 | PubVM-32 (mesmo núcleo, palavra maior) | **concluída** |
 | 5A | Paridade do núcleo no target JS | **concluída** |
-| 5B | UI mínima | não iniciada |
+| 5B | UI mínima | **concluída** |
 | 6 | Debugger | não iniciada |
 | 7 | Camada educacional | não iniciada |
 | 8 | Advanced Mode — X, Y, SP, FP, stack, shifts, saltos extras | não iniciada |
@@ -88,8 +88,19 @@ conjunto de instruções inteiro do Basic Mode, o encoding, imediatos, memória,
 PC, labels, branches e as quatro flags sobre cada variante, a partir de fonte
 PubASM idêntica.
 
-**Ainda não existe interface de usuário.** A máquina é acionada pela suíte de
-testes e por código Kof.
+A janela do laboratório é a interface mínima da fase 5B: um editor PubASM, um
+seletor de máquina, um seletor de exemplos, um seletor de idioma, os quatro
+controles, os registradores em decimal/hexadecimal/binário, as flags, o estado
+com PC e contagem de ciclos, a instrução atual lida de volta da memória, a
+saída e os diagnósticos. Ela renderiza no navegador a partir do mesmo núcleo
+que os testes exercitam.
+
+```bash
+kof run Main.kf --target js
+```
+
+O que ela ainda **não** tem: a visão de memória, a stack, destaque de
+mudanças, Pause e as explicações educacionais — isso é das fases 6 a 8.
 
 As instruções do Advanced Mode (`PUSH`, `POP`, `CALL`, `RET`, `SHL`, `SHR`,
 `ROL`, `ROR`, `JN`, `JO`, `JNZ`, `JNC`, `ENTER`, `LEAVE`) e os registradores
@@ -98,13 +109,14 @@ diz isso, em vez de reportá-los como desconhecidos.
 
 ## Atribuição na tela
 
-O PubLab exibe **Powered by: Kof**, com link para
-<https://github.com/KofLang/Kof4j>, ao lado do nome do produto.
+O PubLab exibe **Powered by: Kof** no rodapé da janela, como uma linha
+simples com link para <https://github.com/KofLang/Kof4j> — sem estilo
+aplicado.
 
-Ainda não existe interface (fase 5B), então a atribuição vive em
-`publab/app/Brand.kf` como fonte única que a interface vai renderizar —
-`poweredByLabel()` e `poweredByUrl()` — em vez de uma string que a UI poderia
-esquecer. Está coberta por `tests/brand_test.kf`.
+O texto e a URL vivem em `publab/app/Brand.kf` como fonte única que a
+interface lê — `poweredByLabel()` e `poweredByUrl()` — em vez de uma string
+que a UI poderia esquecer ou deixar divergir. Coberta por
+`tests/brand_test.kf`.
 
 ## Rodando os testes
 

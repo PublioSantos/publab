@@ -1,0 +1,164 @@
+package publab.ui
+
+// Every translatable string of the interface, in one place — the same rule the
+// assembler's Messages.kf follows (section 40). No widget anywhere carries a
+// literal sentence; it asks for one by name and language.
+
+Bool isPt(String language) {
+    return language == "pt" || language == "pt_BR" || language == "pt-BR"
+}
+
+List<String> supportedLanguages() {
+    return listOf("en", "pt")
+}
+
+String languageLabel(String language) {
+    if (isPt(language)) { return "Português" }
+    return "English"
+}
+
+// --- panel titles ---
+
+String sourceTitle(String language) {
+    if (isPt(language)) { return "FONTE" }
+    return "SOURCE"
+}
+
+String registersTitle(String language) {
+    if (isPt(language)) { return "REGISTRADORES" }
+    return "REGISTERS"
+}
+
+String flagsTitle(String language) {
+    if (isPt(language)) { return "FLAGS" }
+    return "FLAGS"
+}
+
+String outputTitle(String language) {
+    if (isPt(language)) { return "SAÍDA" }
+    return "OUTPUT"
+}
+
+String diagnosticsTitle(String language) {
+    if (isPt(language)) { return "DIAGNÓSTICOS" }
+    return "DIAGNOSTICS"
+}
+
+String machineTitle(String language) {
+    if (isPt(language)) { return "MÁQUINA" }
+    return "MACHINE"
+}
+
+String exampleTitle(String language) {
+    if (isPt(language)) { return "EXEMPLO" }
+    return "EXAMPLE"
+}
+
+String languageTitle(String language) {
+    if (isPt(language)) { return "IDIOMA" }
+    return "LANGUAGE"
+}
+
+// --- controls ---
+
+String assembleButton(String language) {
+    if (isPt(language)) { return "Montar" }
+    return "Assemble"
+}
+
+String resetButton(String language) {
+    if (isPt(language)) { return "Reiniciar" }
+    return "Reset"
+}
+
+String stepButton(String language) {
+    if (isPt(language)) { return "Passo" }
+    return "Step"
+}
+
+String runButton(String language) {
+    if (isPt(language)) { return "Executar" }
+    return "Run"
+}
+
+// --- state words ---
+
+String statusWord(String canonical, String language) {
+    if (!isPt(language)) { return canonical }
+    if (canonical == "READY") { return "PRONTA" }
+    if (canonical == "RUNNING") { return "EXECUTANDO" }
+    if (canonical == "PAUSED") { return "PAUSADA" }
+    if (canonical == "HALTED") { return "PARADA" }
+    return "ERRO"
+}
+
+String currentWord(String language) {
+    if (isPt(language)) { return "ATUAL" }
+    return "CURRENT"
+}
+
+String cyclesWord(String language) {
+    if (isPt(language)) { return "ciclos" }
+    return "cycles"
+}
+
+String wordSizeWord(String language) {
+    if (isPt(language)) { return "bits de palavra" }
+    return "bit word"
+}
+
+String memoryWord(String language) {
+    if (isPt(language)) { return "de memória" }
+    return "of memory"
+}
+
+// --- messages ---
+
+String assembledMessage(Int bytes, String language) {
+    if (isPt(language)) { return "montado: " + bytes + " bytes carregados na memória" }
+    return "assembled: " + bytes + " bytes loaded into memory"
+}
+
+String notAssembledMessage(String language) {
+    if (isPt(language)) { return "nada montado ainda — escreva PubASM e clique em Montar" }
+    return "nothing assembled yet — write PubASM and press Assemble"
+}
+
+String didNotFinishMessage(Int cycles, String language) {
+    if (isPt(language)) {
+        return "não terminou: " + cycles + " ciclos executados e o orçamento acabou."
+            + " O programa pode estar em laço infinito. Clique em Executar para continuar."
+    }
+    return "did not finish: " + cycles + " cycles ran and the budget ended."
+        + " The program may be looping forever. Press Run to continue."
+}
+
+String haltedMessage(Int cycles, String language) {
+    if (isPt(language)) { return "parada após " + cycles + " ciclos" }
+    return "halted after " + cycles + " cycles"
+}
+
+String errorMessage(String fault, String language) {
+    if (isPt(language)) { return "falha de execução: " + fault }
+    return "execution fault: " + fault
+}
+
+String assemblyFailedMessage(String language) {
+    if (isPt(language)) { return "não montou — nada foi carregado na máquina" }
+    return "did not assemble — nothing was loaded into the machine"
+}
+
+String noOutputMessage(String language) {
+    if (isPt(language)) { return "(sem saída — use PRINT)" }
+    return "(no output — use PRINT)"
+}
+
+String emptyDiagnosticsMessage(String language) {
+    if (isPt(language)) { return "(sem diagnósticos)" }
+    return "(no diagnostics)"
+}
+
+String pausedAtMessage(Int cycles, String language) {
+    if (isPt(language)) { return "pausada — " + cycles + " ciclos, pronta para o próximo passo" }
+    return "paused — " + cycles + " cycles, ready for the next step"
+}

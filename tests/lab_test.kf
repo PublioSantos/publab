@@ -1,0 +1,215 @@
+package tests
+
+import publab.machine
+import publab.assembler
+import publab.app
+import publab.ui
+
+// The controller behind the buttons. The widget tree cannot be asserted (it
+// only renders on JS), but everything a button DOES is here, so every control
+// of the laboratory is covered on both targets.
+//
+// The controller holds static state, so each test sets up what it needs
+// instead of relying on the order tests run in.
+
+String goldenProgram() {
+    return "LOAD A, 250\nLOAD B, 20\nADD A, B\nPRINT A\nHALT\n"
+}
+
+test "a fresh laboratory has nothing assembled and says so" {
+    labSelectMachine(0)
+    assert(labAssembled() == false)
+    assert(labImageBytes() == 0)
+    assert(labMessage().contains("nothing assembled yet"), labMessage())
+    assert(labState().machineName() == "PubVM-8")
+    assert(statusName(labState().status()) == "READY")
+    assert(labDiagnostics() == "")
+}
+
+test "Assemble loads the program into the real machine" {
+    labSelectMachine(0)
+    assert(labAssemble(goldenProgram()))
+    assert(labAssembled())
+    assert(labImageBytes() == 12)
+    assert(labMessage() == "assembled: 12 bytes loaded into memory", labMessage())
+    val state = labState()
+    assert(state.pc() == 0 && state.cycles() == 0)
+    assert(state.currentInstruction() == "LOAD A, 250", "the program is in memory")
+}
+
+test "Step advances exactly one instruction" {
+    labSelectMachine(0)
+    labAssemble(goldenProgram())
+    assert(labStep())
+    assert(labMessage() == "paused — 1 cycles, ready for the next step", labMessage())
+    assert(labState().registers().get(0) == 250 as Long)
+    assert(labState().pc() == 3)
+    assert(labState().cycles() == 1)
+    assert(labStep())
+    assert(labStep())
+    assert(labState().registers().get(0) == 14 as Long, "the ADD happened")
+    assert(labState().carry(), "and set carry")
+}
+
+test "Run finishes the program and reports the cycles" {
+    labSelectMachine(0)
+    labAssemble(goldenProgram())
+    assert(labRun() == 5)
+    assert(statusName(labState().status()) == "HALTED")
+    assert(labState().output().get(0) == "14")
+    assert(labMessage() == "halted after 5 cycles", labMessage())
+}
+
+test "Reset restores the machine and keeps the program loaded" {
+    labSelectMachine(0)
+    labAssemble(goldenProgram())
+    labRun()
+    labReset()
+    val state = labState()
+    assert(statusName(state.status()) == "READY")
+    assert(state.pc() == 0 && state.cycles() == 0)
+    assert(state.registers().get(0) == 0 as Long)
+    assert(state.output().size == 0)
+    assert(labAssembled(), "still loaded")
+    assert(labMessage().contains("12 bytes"), labMessage())
+    assert(labRun() == 5, "and it runs again")
+}
+
+test "Step and Run do nothing before anything is assembled" {
+    labSelectMachine(0)
+    assert(labStep() == false)
+    assert(labMessage().contains("nothing assembled yet"))
+    assert(labRun() == 0)
+    assert(labState().cycles() == 0)
+}
+
+test "a program that does not assemble never reaches the machine" {
+    labSelectMachine(0)
+    labAssemble(goldenProgram())
+    assert(labAssembled())
+    assert(labAssemble("LOAD A, 300\nHALT\n") == false, "300 does not fit 8 bits")
+    assert(labAssembled() == false)
+    assert(labImageBytes() == 0)
+    assert(labMessage() == "did not assemble — nothing was loaded into the machine")
+    assert(labDiagnostics().contains("ASM005"), labDiagnostics())
+    // The machine is empty, not left running the previous program.
+    assert(labState().cycles() == 0)
+    assert(labStep() == false)
+}
+
+test "diagnostics follow the selected language" {
+    labSelectMachine(0)
+    labSetLanguage("en")
+    labAssemble("LOAD A, 300\nHALT\n")
+    assert(labDiagnostics().contains("does not fit in a 8-bit word"), labDiagnostics())
+    labSetLanguage("pt")
+    labAssemble("LOAD A, 300\nHALT\n")
+    assert(labDiagnostics().contains("não cabe em uma palavra de 8 bits"), labDiagnostics())
+    assert(labMessage() == "não montou — nada foi carregado na máquina", labMessage())
+    labSetLanguage("en")
+}
+
+test "choosing a machine gives the same program a different answer" {
+    labSelectMachine(0)
+    labAssemble(goldenProgram())
+    labRun()
+    assert(labState().output().get(0) == "14")
+    assert(labState().carry())
+
+    labSelectMachine(1)
+    assert(labAssembled() == false, "switching machine discards the image")
+    assert(labState().machineName() == "PubVM-16")
+    labAssemble(goldenProgram())
+    assert(labImageBytes() == 14, "the immediates are wider")
+    labRun()
+    assert(labState().output().get(0) == "270")
+    assert(labState().carry() == false)
+
+    labSelectMachine(2)
+    labAssemble(goldenProgram())
+    labRun()
+    assert(labState().machineName() == "PubVM-32")
+    assert(labState().output().get(0) == "270")
+    labSelectMachine(0)
+}
+
+test "the machine selector offers exactly the implemented variants" {
+    val names = labMachineNames()
+    assert(names.size == 3)
+    assert(names.get(0) == "PubVM-8" && names.get(1) == "PubVM-16" && names.get(2) == "PubVM-32")
+    labSelectMachine(2)
+    assert(labSelectedMachine() == 2)
+    labSelectMachine(0)
+    assert(labSelectedMachine() == 0)
+    // An index out of range falls back to the first variant instead of failing.
+    labSelectMachine(99)
+    assert(labConfig().name() == "PubVM-8")
+    labSelectMachine(0 - 1)
+    assert(labConfig().name() == "PubVM-8")
+}
+
+test "the example selector offers programs that really run" {
+    val names = labExampleNames()
+    assert(names.size == 5)
+    labSelectMachine(0)
+    var i = 0
+    while (i < names.size) {
+        assert(labAssemble(labExampleSource(i)), names.get(i) + " did not assemble")
+        labRun()
+        assert(statusName(labState().status()) == "HALTED", names.get(i) + " did not halt")
+        i = i + 1
+    }
+    // Out of range falls back to the first example.
+    assert(labExampleSource(99) == labExampleSource(0))
+    // The laboratory opens on a program that shows the word size.
+    assert(labDefaultSource().contains("LOAD A, 250"))
+}
+
+test "an execution fault is reported, and the machine stops" {
+    labSelectMachine(0)
+    // Jump into the immediate of the first instruction: 238 is 0xEE, which is
+    // not an opcode. The bytes are 10 00 EE | 50 02 00, so address 2 holds EE.
+    labAssemble("LOAD A, 238\nJMP 0x02\n")
+    assert(labAssembled())
+    labRun()
+    assert(statusName(labState().status()) == "ERROR")
+    assert(labMessage().contains("execution fault"), labMessage())
+    assert(labStep() == false, "a faulted machine does not step")
+}
+
+test "a program that loops forever is bounded, not hung" {
+    labSelectMachine(0)
+    labAssemble("loop:\nJMP loop\n")
+    assert(labAssembled())
+    val cycles = labRun()
+    assert(cycles == labRunBudget(), "the budget bounded it")
+    assert(statusName(labState().status()) == "PAUSED")
+    assert(labMessage().contains("did not finish"), labMessage())
+    // And it can be continued.
+    assert(labRun() == labRunBudget())
+}
+
+test "changing language re-states the current situation in that language" {
+    labSelectMachine(0)
+    labSetLanguage("en")
+    labAssemble(goldenProgram())
+    labRun()
+    assert(labMessage() == "halted after 5 cycles", labMessage())
+    labSetLanguage("pt")
+    assert(labMessage() == "parada após 5 ciclos", labMessage())
+    labSetLanguage("en")
+    assert(labMessage() == "halted after 5 cycles")
+
+    // Before anything is assembled, and while paused mid-program.
+    labSelectMachine(0)
+    labSetLanguage("pt")
+    assert(labMessage().contains("nada montado ainda"), labMessage())
+    labAssemble(goldenProgram())
+    assert(labMessage().contains("montado: 12 bytes"), labMessage())
+    labSetLanguage("en")
+    assert(labMessage() == "assembled: 12 bytes loaded into memory", labMessage())
+    labStep()
+    labSetLanguage("pt")
+    assert(labMessage().contains("pausada"), labMessage())
+    labSetLanguage("en")
+}
