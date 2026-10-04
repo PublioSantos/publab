@@ -6,19 +6,40 @@
 
 > See the machine.
 
+[![Deploy to GitHub Pages](https://github.com/PublioSantos/publab/actions/workflows/pages.yml/badge.svg)](https://github.com/PublioSantos/publab/actions/workflows/pages.yml)
 **Powered by: [Kof](https://github.com/KofLang/Kof4j)**
 
-[![Deploy to GitHub Pages](https://github.com/PublioSantos/publab/actions/workflows/pages.yml/badge.svg)](https://github.com/PublioSantos/publab/actions/workflows/pages.yml)
+### 👉 [Experimente o PubLab agora — sem instalar nada](https://publiosantos.github.io/publab/)
 
-**Experimente agora:** <https://publiosantos.github.io/publab/> — reconstruída
-e republicada automaticamente a cada push na `main` (ver
-[.github/workflows/pages.yml](.github/workflows/pages.yml)), então a página
-sempre roda a versão atual. Um push nunca é publicado sem passar primeiro
-pela suíte de testes completa nos dois targets.
+Ela é reconstruída e republicada automaticamente a cada push na `main`,
+então aquela página sempre roda a versão atual — e um push nunca é
+publicado sem passar primeiro pela suíte de testes completa nos dois
+targets. O que você vê ali é exatamente este repositório.
+
+---
 
 O PubLab é um laboratório para aprender como um computador funciona por
-dentro: você escreve um programa pequeno, executa instrução por instrução e vê
-os registradores, as flags, a memória e o program counter mudarem de verdade.
+dentro. Você escreve algumas linhas de assembly, aperta **Step**, e vê
+acontecer de verdade: os registradores mudam, uma flag vira, um byte cai na
+memória, o program counter avança para a próxima instrução — na máquina
+real, em execução, não num diagrama.
+
+Abra a página e carregue o `overflow.pasm`, o exemplo com que ela já começa:
+
+```asm
+    LOAD A, 250
+    LOAD B, 20
+    ADD A, B
+    PRINT A
+    HALT
+```
+
+Rode na `PubVM-8` e `A` termina em `14` com o carry ligado. Troque o
+seletor de máquina para `PubVM-16` sem mudar mais nada, rode de novo, e `A`
+agora é `270` — mesma fonte, mesmas instruções, resposta diferente, porque
+270 não cabe num registrador de 8 bits. Essa diferença *é* a lição, e o
+laboratório deixa você assistir ela acontecer em vez de só confiar na
+palavra de alguém.
 
 ```
 PubLab
@@ -27,51 +48,51 @@ PubLab
 │   ├── PubVM-8
 │   ├── PubVM-16
 │   └── PubVM-32
-├── 8051          arquitetura histórica        (modelo educacional)
-└── Cortex-M3     arquitetura ARM moderna      (modelo educacional)
+├── 8051          arquitetura histórica        (modelo educacional, planejado)
+└── Cortex-M3     arquitetura ARM moderna      (modelo educacional, planejado)
 ```
 
----
+## Rodando localmente
 
-## ⚠️ 8051 e Cortex-M3: modelos educacionais simplificados
+Precisa da [toolchain Kof](https://github.com/KofLang/Kof4j) (construída
+contra a `0.5.0-beta`):
 
-**Implementação simplificada para aprendizado, não código compatível com
-produção.**
+```bash
+kof run Main.kf --target js    # abre o laboratório no webview do Kof
+kof test tests                 # a suíte completa, target JVM
+kof test tests --target js     # a mesma suíte, target JS
+```
 
-Os módulos 8051 e Cortex-M3 do PubLab são **modelos de ensino**. Quando forem
-implementados, cobrirão um subconjunto documentado de cada arquitetura,
-escolhido pelo que ensina, e todo periférico que for abstração em vez de
-silício real dirá isso na própria página onde aparece.
+## O que tem por dentro
 
-O que isso significa na prática:
+O laboratório que você acabou de experimentar é sustentado por uma máquina
+real, não por uma simulação de fachada:
 
-- O PubLab **não** é um emulador e **não** é ferramenta de desenvolvimento
-  para hardware 8051 ou ARM Cortex-M3 real.
-- Um programa que roda no PubLab **não** tem garantia de se comportar igual
-  em um chip físico, e nunca deve ser usado como referência para firmware,
-  certificação, análise de temporização ou qualquer decisão de produção.
-- Apenas um subconjunto explicitamente documentado das instruções e dos
-  periféricos é modelado. O que está fora desse subconjunto está ausente, não
-  aproximado.
-- Quando nomes ou endereços reais de registradores forem usados, o MCU
-  específico será nomeado. O PubLab não inventa endereços de periféricos,
-  registradores, instruções ou comportamentos e os apresenta como hardware
-  real.
-
-Para trabalho real nessas arquiteturas, use a documentação e a toolchain do
-fabricante.
-
-**Situação atual: nenhum dos dois módulos está implementado.** Estão previstos
-para as fases 9 e 10. Veja [docs/8051.pt_BR.md](docs/8051.pt_BR.md) e
-[docs/cortex-m3.pt_BR.md](docs/cortex-m3.pt_BR.md).
-
----
-
-## O que está implementado hoje
+- **PubVM**, um núcleo configurado de três formas (`PubVM-8`/`-16`/`-32`) —
+  mesmos registradores, mesmo conjunto de instruções, mesma lógica de
+  encoding, só a largura da palavra muda. O `tests/matrix_test.kf` roda o
+  conjunto de instruções inteiro, o encoding, imediatos, memória, labels,
+  branches e as quatro flags em cada variante, a partir da mesma fonte
+  PubASM, então as três variantes não conseguem se desalinhar em silêncio.
+- **PubASM**, um assembler de dois passes pequeno, com labels, diagnósticos
+  em inglês e português, e um source map que o debugger usa para destacar a
+  linha em que a máquina está.
+- **Um debugger de verdade**: um dump de memória (hex/dec/bin) com o program
+  counter e as escritas da última instrução marcados, uma lista
+  antes/depois de tudo o que aquela instrução mudou, e um painel STACK
+  acompanhando `SP`/`FP` em tempo real.
+- **Um painel EXPLANATION em linguagem natural**: o que o último Step ou Run
+  realmente fez, numa frase, construído a partir do mesmo estado
+  antes/depois que o debugger já lê — não uma segunda interpretação separada
+  do programa, que poderia divergir do que de fato aconteceu.
+- **Advanced Mode**, totalmente implementado: registradores gerais `X`/`Y`,
+  uma pilha real (`SP`/`FP`, `PUSH`/`POP` com falhas explícitas de
+  overflow/underflow, nunca um wrap silencioso), `CALL`/`RET`/`ENTER`/
+  `LEAVE`, shifts e rotates, e o conjunto completo de saltos condicionais.
 
 O desenvolvimento segue a ordem da especificação: máquina → testes →
-assembler → debugger → UI → camada educacional. Nada abaixo é afirmado sem
-estar coberto pela suíte de testes.
+assembler → debugger → UI → camada educacional → Advanced Mode. Toda linha
+abaixo é garantida pela suíte de testes — nada aqui é afirmado de boca.
 
 | Fase | Área | Situação |
 |---|---|---|
@@ -89,66 +110,34 @@ estar coberto pela suíte de testes.
 | 11 | Comparação entre arquiteturas | não iniciada |
 | 12 | Export | não iniciada |
 
-O núcleo da máquina é **parametrizado pelo tamanho da palavra**: PubVM-8, -16
-e -32 são uma implementação configurada de formas diferentes, nunca três
-cópias. As três estão validadas ponta a ponta — `tests/matrix_test.kf` roda o
-conjunto de instruções inteiro do Basic Mode, o encoding, imediatos, memória,
-PC, labels, branches e as quatro flags sobre cada variante, a partir de fonte
-PubASM idêntica.
+Uma ausência nas fases 1-8 é deliberada, não pendência: não existe botão
+**Pause**, porque o runtime de UI JS do Kof não tem timer, então um `Run`
+não pode ser interrompido por um clique enquanto está executando. O que
+existe no lugar é real: o `Run` é limitado por um orçamento de ciclos,
+informa honestamente quando não terminou, e continua exatamente de onde
+parou no próximo clique.
 
-A janela do laboratório é a interface mínima da fase 5B: um editor PubASM, um
-seletor de máquina, um seletor de exemplos, um seletor de idioma, os quatro
-controles, os registradores em decimal/hexadecimal/binário, as flags, o estado
-com PC e contagem de ciclos, a instrução atual lida de volta da memória, a
-saída e os diagnósticos. Ela renderiza no navegador a partir do mesmo núcleo
-que os testes exercitam.
+## Mais duas arquiteturas estão chegando — 8051 e Cortex-M3
 
-```bash
-kof run Main.kf --target js
-```
+As fases 9 e 10 vão acrescentar mais dois modelos educacionais, e é
+importante deixar claro desde já o que isso vai e não vai ser:
 
-O debugger da fase 6 acrescenta: o dump de memória em hexadecimal, decimal ou
-binário com o PC e as células escritas pela última instrução marcados, uma
-lista antes/depois de tudo o que aquela instrução mudou, um marcador de uma
-coluna nos registradores e nas flags, e a linha da fonte em que o PC está,
-pelo source map do assembler.
+- O PubLab **não** é um emulador e **não** é uma ferramenta de
+  desenvolvimento para hardware 8051 ou ARM Cortex-M3 real. Um programa que
+  roda no PubLab **não** tem garantia de se comportar igual num chip
+  físico — nunca o use como referência para firmware, certificação, análise
+  de temporização ou qualquer decisão de produção.
+- Só um subconjunto explicitamente documentado das instruções e periféricos
+  de cada arquitetura será modelado, escolhido pelo que ensina. O que
+  estiver fora desse subconjunto estará ausente, não aproximado — e onde um
+  nome ou endereço real de registrador for usado, o MCU específico será
+  nomeado. O PubLab não vai inventar endereços de periféricos, registradores
+  ou comportamentos e apresentá-los como hardware real.
 
-A camada educacional (fase 7) acrescenta um painel EXPLANATION em linguagem
-natural: o que o último Step ou Run realmente fez, construído a partir dos
-mesmos snapshots antes/depois que a lista de mudanças do debugger já lê —
-nunca uma segunda interpretação do programa.
-
-O Advanced Mode (fase 8) está **concluído**, construído em três etapas.
-Etapa A: `X` e `Y` são registradores gerais comuns; `SP` e `FP` estão
-implementados como endereços ao lado do `PC` (não como registradores do
-tamanho da palavra — o valor inicial do `SP`, um endereço além do topo da
-memória, não cabe numa palavra de 8 ou 16 bits); `PUSH` e `POP` movem a
-pilha, com falhas explícitas de overflow/underflow, nunca um wrap silencioso.
-Etapa B: `CALL` e `RET` empilham/desempilham o endereço de retorno, `ENTER`
-e `LEAVE` são o prólogo/epílogo clássico de salvar/restaurar o FP — tudo
-pela mesma pilha e as mesmas verificações de overflow/underflow do
-`PUSH`/`POP`, mas movendo `addressBytes` em vez de `wordBytes` (um endereço
-de retorno e um FP salvo são localizações, não dados — ver "Pilha" em
-[docs/pubvm.pt_BR.md](docs/pubvm.pt_BR.md)). O painel STACK do debugger
-mostra SP/FP e as palavras na pilha, lidas da memória real através do SP.
-Etapa C: `SHL`/`SHR`/`ROL`/`ROR` têm as mesmas formas `op reg, imm`/
-`op reg, reg` do `ADD`/`SUB` (o segundo operando é a contagem de
-shift/rotate), com `C` recebendo o bit que de fato atravessou a borda da
-palavra; `JN`, `JO`, `JNZ` e `JNC` completam os saltos condicionais. Todo
-mnemônico do Advanced Mode listado na especificação está implementado agora
-— o `ASM010` ("pertence ao Advanced Mode, ainda não implementado") não tem
-mais nenhum exemplo vivo para montar. O painel EXPLANATION cobre tudo isso
-também: `PUSH`/`POP`/`CALL`/`RET`/`ENTER`/`LEAVE` descrevem o que se moveu
-na pilha, e os shifts/rotates nomeiam o bit de carry que atravessou a borda.
-
-Uma ausência é deliberada, não pendência:
-
-- **Sem botão Pause.** O runtime de UI JS do Kof não tem timer, então uma
-  execução não pode ser interrompida por um botão — o clique não chegaria
-  enquanto o run executa. O que existe no lugar é real: o `Run` é limitado
-  por um orçamento de ciclos, informa que não terminou e continua de onde
-  parou. O engine mantém o `requestPause()` para um chamador capaz de
-  acionar a máquina em fatias.
+Para trabalho real nessas arquiteturas, use a documentação e a toolchain do
+fabricante. Nenhum dos dois módulos está implementado ainda — veja
+[docs/8051.pt_BR.md](docs/8051.pt_BR.md) e
+[docs/cortex-m3.pt_BR.md](docs/cortex-m3.pt_BR.md) para o que está planejado.
 
 ## Atribuição na tela
 
@@ -161,14 +150,6 @@ interface lê — `poweredByLabel()` e `poweredByUrl()` — em vez de uma string
 que a UI poderia esquecer ou deixar divergir. Coberta por
 `tests/brand_test.kf`.
 
-## Rodando os testes
-
-Precisa da toolchain Kof (construído contra a 0.5.0-beta):
-
-```bash
-kof test tests
-```
-
 ## Licença
 
 MIT — veja [LICENSE](LICENSE).
@@ -180,10 +161,10 @@ MIT — veja [LICENSE](LICENSE).
 - [docs/pubasm.pt_BR.md](docs/pubasm.pt_BR.md) — a linguagem: sintaxe, instruções, diagnostics
 - [docs/8051.pt_BR.md](docs/8051.pt_BR.md) — modelo educacional (não implementado)
 - [docs/cortex-m3.pt_BR.md](docs/cortex-m3.pt_BR.md) — modelo educacional (não implementado)
-- [examples/](examples/) — programas que realmente rodam
+- [examples/](examples/) — programas que realmente rodam, com comentários em inglês e português
 
 A documentação de ensino da seção 38 da especificação (o que é uma CPU, o que
-é um registrador, o que é overflow) chega com a camada educacional na fase 7.
+é um registrador, o que é overflow) chega com as fases 9-10.
 
 ## Targets
 
@@ -193,14 +174,7 @@ segunda implementação da máquina em JavaScript:
 ```
                   ┌── jvm   (testes, e uma CLI futura)
 Núcleo PubVM ─────┤
-                  └── js    (a UI no navegador, fase 5B)
-```
-
-Os dois estão verdes na suíte inteira:
-
-```bash
-kof test tests
-kof test tests --target js
+                  └── js    (a UI no navegador, e a página ao vivo acima)
 ```
 
 O `tests/js_parity_test.kf` é a bateria de paridade: as operações bitwise e
