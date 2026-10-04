@@ -89,7 +89,7 @@ kof test tests --target js     # a mesma suíte, target JS
 
 O desenvolvimento segue a ordem da especificação: máquina → testes →
 assembler → debugger → UI → camada educacional → Advanced Mode. Toda linha
-abaixo é garantida pela suíte de testes — nada aqui é afirmado de boca.
+abaixo é garantida pela suíte de testes.
 
 | Fase | Área | Situação |
 |---|---|---|

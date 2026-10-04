@@ -89,7 +89,7 @@ kof test tests --target js     # the same suite, JS target
 
 Development follows the order in the specification: machine → tests →
 assembler → debugger → UI → educational layer → Advanced Mode. Every row
-below is enforced by the test suite — nothing here is claimed on vibes.
+below is enforced by the test suite.
 
 | Phase | Area | Status |
 |---|---|---|
