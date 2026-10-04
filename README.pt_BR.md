@@ -65,9 +65,6 @@ kof test tests --target js     # a mesma suíte, target JS
 
 ## O que tem por dentro
 
-O laboratório que você acabou de experimentar é sustentado por uma máquina
-real, não por uma simulação de fachada:
-
 - **PubVM**, um núcleo configurado de três formas (`PubVM-8`/`-16`/`-32`) —
   mesmos registradores, mesmo conjunto de instruções, mesma lógica de
   encoding, só a largura da palavra muda. O `tests/matrix_test.kf` roda o

@@ -65,8 +65,6 @@ kof test tests --target js     # the same suite, JS target
 
 ## What's inside
 
-The laboratory you just tried is backed by a real machine, not a mock:
-
 - **PubVM**, one core configured three ways (`PubVM-8`/`-16`/`-32`) — same
   registers, same instruction set, same encoding logic, only the word width
   changes. `tests/matrix_test.kf` runs the entire instruction set, the
