@@ -1,0 +1,91 @@
+package tests
+
+import publab.cm3
+
+// Phase 10 stage A — the Cortex-M3 core: registers, APSR, and the ALU.
+// Real semantics throughout (docs/cortex-m3.md): a flat register file
+// (unlike the 8051's banked one), and C on SUB/CMP defined as NOT borrow —
+// the opposite sense from PubVM's and the 8051's C.
+
+test "R0-R12 are flat, named and looked up case-insensitively" {
+    assert(registerNameM3(0) == "R0")
+    assert(registerNameM3(12) == "R12")
+    assert(lookupRegisterM3("r7").found, "case-insensitive")
+    assert(lookupRegisterM3("r7").id == 7)
+    assert(lookupRegisterM3("R13").found == false, "only R0-R12 exist as Rn")
+    assert(isLowRegister(0) && isLowRegister(12))
+    assert(isLowRegister(13) == false, "SP is not a low register")
+}
+
+test "SP and LR are named registers; PC is not reachable as an operand at all" {
+    assert(lookupRegisterM3("SP").found && lookupRegisterM3("SP").id == regSP())
+    assert(lookupRegisterM3("LR").found && lookupRegisterM3("LR").id == regLR())
+    assert(lookupRegisterM3("PC").found == false,
+        "PC is only ever the fetch address in this model, never a data operand")
+    assert(isReservedNameM3("PC"))
+}
+
+test "GPIO, SysTick, UART, Timer and APSR/CONTROL are reserved — stage B/out of scope" {
+    assert(isReservedNameM3("GPIOA"))
+    assert(isReservedNameM3("SYSTICK") && isReservedNameM3("UART") && isReservedNameM3("TIMER"))
+    assert(isReservedNameM3("APSR") && isReservedNameM3("CONTROL"))
+}
+
+test "APSR starts clear, and clear() really clears it" {
+    var apsr = ApsrM3()
+    assert(apsr.negative == false && apsr.zero == false)
+    assert(apsr.carry == false && apsr.overflow == false)
+    apsr.carry = true
+    apsr.negative = true
+    apsr.clear()
+    assert(apsr.carry == false && apsr.negative == false)
+}
+
+// --- ALU ---------------------------------------------------------------
+
+test "ADD: carry and signed overflow, same reasoning as PubVM's ADD" {
+    val plain = aluM3Add(10 as Long, 20 as Long)
+    assert(plain.value() == 30 as Long && plain.carry() == false)
+    val overflow = aluM3Add(2147483647 as Long, 1 as Long) // INT32_MAX + 1
+    assert(overflow.overflow(), "signed overflow: positive + positive = negative")
+}
+
+test "SUB/CMP: C is NOT borrow — the opposite sense from PubVM's and the 8051's C" {
+    val noBorrow = aluM3Sub(10 as Long, 3 as Long)
+    assert(noBorrow.value() == 7 as Long)
+    assert(noBorrow.carry(), "no borrow occurred, so real ARM's C is 1")
+    val borrow = aluM3Sub(3 as Long, 10 as Long)
+    assert(borrow.carry() == false, "a borrow occurred, so real ARM's C is 0 — inverted from PubVM")
+}
+
+test "SUB: signed overflow follows the same operand/result-sign reasoning as PubVM's SUB" {
+    // A large positive minus a large negative overflows signed 32-bit.
+    // 2147483648 built with a shift, not the literal itself — see the note
+    // in the AND/ORR/EOR test above.
+    val minSigned = (0 as Long) - ((1 as Long) << 31)
+    val overflow = aluM3Sub(2147483647 as Long, minSigned)
+    assert(overflow.overflow())
+}
+
+test "AND/ORR/EOR set only N/Z — C and V are the caller's to keep" {
+    // Built with shifts, not the literals 0xFF00FF00/0x00FF00FF directly:
+    // a hex literal above 0x7FFFFFFF is ambiguous in Kof's own host syntax
+    // (Int-sized before "as Long" ever runs) — unrelated to this module's
+    // own lexer, which has no such problem with the same digits inside an
+    // assembled program's source text.
+    val highBytes: Long = ((0xFF as Long) << 24) | ((0xFF as Long) << 8)
+    val lowBytes: Long = ((0xFF as Long) << 16) | (0xFF as Long)
+    val anded = aluM3And(highBytes, lowBytes)
+    assert(anded.value() == 0 as Long && anded.zero())
+    val ored = aluM3Orr(0xF0 as Long, 0x0F as Long)
+    assert(ored.value() == 0xFF as Long)
+    val xored = aluM3Eor(0xFF as Long, 0x0F as Long)
+    assert(xored.value() == 0xF0 as Long)
+}
+
+test "MOV's flags come from the moved value, N and Z only" {
+    val toZero = aluM3MovFlags(0 as Long)
+    assert(toZero.zero())
+    val negative = aluM3MovFlags((1 as Long) << 31)
+    assert(negative.negative(), "the sign bit of a 32-bit value")
+}

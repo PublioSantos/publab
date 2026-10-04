@@ -23,17 +23,22 @@ e não uma ferramenta de desenvolvimento para hardware ARM real.
 - Qualquer exportação futura para hardware real (fase 12) precisa declarar
   o MCU e o alvo explicitamente.
 
-## Situação: escopo aprovado, não implementado
+## Situação: etapa A concluída
 
 Esta página é o escopo completo para a fase 10, marcado item por item como
 arquitetura real ou abstração educacional (Regra 7 da especificação),
 seguindo a mesma disciplina que a fase 8 (Advanced Mode) e a fase 9 (8051)
-usaram: documentado e aprovado antes de qualquer código ser escrito. A
+usaram: documentado e aprovado antes de qualquer código ter sido escrito. A
 implementação segue em etapas, cada uma com seus próprios testes.
 
-- **Etapa A** — núcleo: registradores, flags do APSR, um espaço de memória
-  plano, o subconjunto Thumb abaixo, saltos condicionais, `BL`/`BX LR`,
-  `PUSH`/`POP` multi-registrador.
+- **Etapa A — concluída.** Núcleo: registradores, flags do APSR, um
+  espaço de memória plano, o subconjunto Thumb abaixo, saltos
+  condicionais, `BL`/`BX LR`, `PUSH`/`POP` multi-registrador. Vive em
+  `publab/cm3/`, sua própria toolchain autocontida — não é um modo da
+  PubVM nem do 8051. Coberta por `tests/cm3_core_test.kf`,
+  `tests/cm3_asm_test.kf`, `tests/cm3_engine_test.kf` e
+  `tests/cm3_golden_test.kf`. Ainda sem aba na UI, a mesma ordem que as
+  outras duas máquinas seguiram.
 - **Etapa B** — uma porta GPIO, modelada do mesmo jeito que o `P0` do 8051:
   um registrador comum de leitura/escrita, conceitual, sem endereço de
   periférico inventado.

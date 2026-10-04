@@ -21,17 +21,21 @@ and not a development tool for real ARM hardware.
 - Any future export to real hardware (phase 12) must state the MCU and
   target explicitly.
 
-## Status: scope approved, not implemented
+## Status: stage A done
 
 This page is the full scope for phase 10, marked item by item as real
 architecture or educational abstraction (Rule 7 of the specification),
 following the same discipline phase 8 (Advanced Mode) and phase 9 (8051)
-used: documented and approved before any code is written. Implementation
+used: documented and approved before any code was written. Implementation
 proceeds in stages, each with its own tests.
 
-- **Stage A** — core: registers, APSR flags, a flat memory space, the Thumb
-  subset below, conditional branches, `BL`/`BX LR`, multi-register
-  `PUSH`/`POP`.
+- **Stage A — done.** Core: registers, APSR flags, a flat memory space,
+  the Thumb subset below, conditional branches, `BL`/`BX LR`,
+  multi-register `PUSH`/`POP`. Lives in `publab/cm3/`, its own
+  self-contained toolchain — not a mode of PubVM's or the 8051's. Covered
+  by `tests/cm3_core_test.kf`, `tests/cm3_asm_test.kf`,
+  `tests/cm3_engine_test.kf` and `tests/cm3_golden_test.kf`. No UI tab
+  yet, same order the other two machines followed.
 - **Stage B** — one GPIO port, modelled the same way 8051's `P0` is: a
   plain readable/writable register, conceptual, no peripheral address
   invented.

@@ -1,0 +1,142 @@
+package tests
+
+import publab.cm3
+
+// Lexer, parser and assembler for the Cortex-M3 module (phase 10, stage A).
+
+test "lexer: idents, numbers, hash, brackets and braces" {
+    val r = lexSourceM3("LDR R0, [R1, #4] ; comment\nPUSH {R0, LR}\n")
+    assert(r.diagnostics().size == 0)
+    val kinds = r.tokens()
+    assert(kinds.get(0).kind() == "ident" && kinds.get(0).text() == "LDR")
+    assert(kinds.get(3).kind() == "lbracket")
+    assert(kinds.get(8).kind() == "rbracket")
+}
+
+test "lexer: an unexpected character and a malformed number are reported" {
+    val bad = lexSourceM3("MOV R0, $5")
+    assert(bad.diagnostics().get(0).code() == "M3010")
+    val malformed = lexSourceM3("0x2G")
+    assert(malformed.diagnostics().get(0).code() == "M3011")
+}
+
+ParseResultM3 parseSourceM3(String source) {
+    return parseTokensM3(lexSourceM3(source).tokens())
+}
+
+test "parser: ADD's three-register and three-operand-with-immediate forms" {
+    val regRegReg = parseSourceM3("ADD R0, R1, R2")
+    assert(formFromOperandsM3(regRegReg.instructions().get(0).operands()).form() == formRegRegRegM3())
+    val regRegImm = parseSourceM3("ADD R0, R1, #4")
+    assert(formFromOperandsM3(regRegImm.instructions().get(0).operands()).form() == formRegRegImmM3())
+}
+
+test "parser: [Rn] and [Rn, #offset] memory operands" {
+    val noOffset = parseSourceM3("LDR R0, [R1]")
+    val op = noOffset.instructions().get(0).operands().get(1)
+    assert(op.kind() == "mem" && op.reg() == 1 && op.value() == 0 as Long)
+    val withOffset = parseSourceM3("LDR R0, [R1, #8]")
+    val op2 = withOffset.instructions().get(0).operands().get(1)
+    assert(op2.kind() == "mem" && op2.reg() == 1 && op2.value() == 8 as Long)
+}
+
+test "parser: a register list, in the order written" {
+    val r = parseSourceM3("PUSH {R0, R4, LR}")
+    val op = r.instructions().get(0).operands().get(0)
+    assert(op.kind() == "reglist")
+    assert(op.regs().size == 3)
+    assert(op.regs().get(0) == 0 && op.regs().get(1) == 4 && op.regs().get(2) == regLR())
+}
+
+test "parser: an empty register list is valid syntax" {
+    val r = parseSourceM3("PUSH {}")
+    assert(r.diagnostics().size == 0)
+    assert(r.instructions().get(0).operands().get(0).regs().size == 0)
+}
+
+test "parser: a label as a branch target" {
+    val r = parseSourceM3("BEQ loop")
+    assert(formFromOperandsM3(r.instructions().get(0).operands()).form() == formAddrM3())
+    assert(r.instructions().get(0).operands().get(0).kind() == "label")
+}
+
+test "parser: reserved names (PC, GPIOA, ...) are rejected, never read as a label" {
+    val r = parseSourceM3("MOV R0, PC")
+    assert(r.diagnostics().size == 1)
+    assert(r.diagnostics().get(0).code() == "M3015")
+}
+
+// --- assembler -----------------------------------------------------------
+
+test "assembler: a representative program encodes" {
+    val assembled = assembleSourceM3("MOV R0, #10\nMOV R1, #20\nADD R0, R0, R1\nHALT\n")
+    assert(assembled.ok(), renderDiagnosticsM3(assembled.diagnostics(), "en"))
+    // MOV(2+4) + MOV(2+4) + ADD(4) + HALT(1) = 6+6+4+1 = 17
+    assert(assembled.byteCount() == 17)
+}
+
+test "assembler: an unknown instruction is reported as unknown" {
+    val r = assembleSourceM3("FOO R0, #1\nHALT\n")
+    assert(r.ok() == false)
+    assert(r.diagnostics().get(0).code() == "M3001")
+}
+
+test "assembler: ADD/SUB/AND/ORR/EOR/CMP reject SP/LR, real Thumb-1's low-register restriction" {
+    val r = assembleSourceM3("ADD R0, SP, #4\nHALT\n")
+    assert(r.ok() == false)
+    assert(r.diagnostics().get(0).code() == "M3014")
+    val ok = assembleSourceM3("ADD R0, R1, #4\nHALT\n")
+    assert(ok.ok(), renderDiagnosticsM3(ok.diagnostics(), "en"))
+}
+
+test "assembler: BX only accepts LR in this stage" {
+    val r = assembleSourceM3("BX R0\nHALT\n")
+    assert(r.ok() == false)
+    assert(r.diagnostics().get(0).code() == "M3016")
+    val ok = assembleSourceM3("BX LR\n")
+    assert(ok.ok(), renderDiagnosticsM3(ok.diagnostics(), "en"))
+}
+
+test "assembler: PUSH/POP's encoded length follows the register count" {
+    val one = assembleSourceM3("PUSH {R0}\nHALT\n")
+    assert(one.ok())
+    assert(one.byteCount() == 4, "opcode + count + 1 reg + HALT")
+    val three = assembleSourceM3("PUSH {R0, R1, LR}\nHALT\n")
+    assert(three.ok())
+    assert(three.byteCount() == 6, "opcode + count + 3 regs + HALT")
+}
+
+test "assembler: an undefined label is reported" {
+    val r = assembleSourceM3("B nowhere\nHALT\n")
+    assert(r.ok() == false)
+    assert(r.diagnostics().get(0).code() == "M3007")
+}
+
+test "assembler: a duplicate label names the first definition" {
+    val r = assembleSourceM3("loop:\nHALT\nloop:\nHALT\n")
+    assert(r.ok() == false)
+    assert(r.diagnostics().get(0).code() == "M3008")
+    assert(renderDiagnosticM3(r.diagnostics().get(0), "en").contains("line 1"))
+}
+
+test "assembler: wrong operand count names what was expected" {
+    val r = assembleSourceM3("ADD R0, R1\nHALT\n")
+    assert(r.ok() == false)
+    assert(r.diagnostics().get(0).code() == "M3003")
+}
+
+test "assembler: labels resolve to real addresses through a variable-length PUSH" {
+    val r = assembleSourceM3("PUSH {R0, R1, R2}\nB skip\nHALT\nskip:\nHALT\n")
+    assert(r.ok(), renderDiagnosticsM3(r.diagnostics(), "en"))
+    // PUSH (2+3=5) + B (3) + HALT (1) = 9
+    assert(r.symbols().get(0).name() == "skip")
+    assert(r.symbols().get(0).address() == 9)
+}
+
+test "assembler: diagnostics render in English and Portuguese" {
+    val r = assembleSourceM3("FOO R0\nHALT\n")
+    val en = renderDiagnosticM3(r.diagnostics().get(0), "en")
+    val pt = renderDiagnosticM3(r.diagnostics().get(0), "pt")
+    assert(en.contains("unknown instruction"), en)
+    assert(pt.contains("instrução desconhecida"), pt)
+}

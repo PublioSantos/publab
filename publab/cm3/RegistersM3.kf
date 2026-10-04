@@ -1,0 +1,85 @@
+package publab.cm3
+
+// Register naming (docs/cortex-m3.md, "Registers"). Unlike the 8051's
+// banked R0-R7, R0-R12 are a genuinely flat register file — the real
+// contrast phase 11 compares. SP/LR/PC are named register ids too (so MOV,
+// PUSH/POP and BX can reach them), but ADD/SUB/AND/ORR/EOR/CMP reject them
+// as operands (`mustBeLowRegister`), mirroring real Thumb-1's restriction
+// of most data-processing instructions to R0-R7/R12-shaped "low" registers
+// rather than the special hi-register encodings real SP/PC manipulation
+// uses — simplified here to "R0-R12 only", not modelled instruction by
+// instruction.
+
+record RegisterLookupM3(Bool found, Int id)
+
+Int lowRegisterCount() { return 13 } // R0-R12
+
+Int regSP() { return 13 }
+Int regLR() { return 14 }
+Int regPC() { return 15 }
+
+Bool isLowRegister(Int id) {
+    return id >= 0 && id < lowRegisterCount()
+}
+
+String registerNameM3(Int id) {
+    if (id == regSP()) { return "SP" }
+    if (id == regLR()) { return "LR" }
+    if (id == regPC()) { return "PC" }
+    if (isLowRegister(id)) { return "R" + id }
+    return "?"
+}
+
+// PC is deliberately NOT recognised here: docs/cortex-m3.md says PC is only
+// ever the fetch address in this model, never read or written as a data
+// value, so it is not a reachable operand at all — see isReservedNameM3.
+RegisterLookupM3 lookupRegisterM3(String name) {
+    val upper = name.toUpperCase()
+    if (upper == "SP") { return RegisterLookupM3(true, regSP()) }
+    if (upper == "LR") { return RegisterLookupM3(true, regLR()) }
+    if (upper.length >= 2 && upper.charAt(0) == 'R') {
+        val digits = upper.substring(1, upper.length)
+        var value = 0
+        var ok = digits.length > 0
+        var i = 0
+        while (ok && i < digits.length) {
+            val c = digits.charAt(i)
+            if (c < '0' || c > '9') { ok = false } else {
+                value = value * 10 + ((c as Int) - ('0' as Int))
+            }
+            i = i + 1
+        }
+        if (ok && value >= 0 && value < lowRegisterCount()) {
+            return RegisterLookupM3(true, value)
+        }
+    }
+    return RegisterLookupM3(false, 0)
+}
+
+// Reserved for a later stage/entirely out of scope (docs/cortex-m3.md).
+Bool isReservedNameM3(String name) {
+    val upper = name.toUpperCase()
+    return upper == "PC" || upper == "PSR" || upper == "APSR" || upper == "CONTROL"
+        || upper == "GPIOA" || upper == "GPIOB" || upper == "SYSTICK"
+        || upper == "UART" || upper == "TIMER"
+}
+
+// APSR — N, Z, C, V. The same four-letter shape as PubVM's flags, on
+// purpose (docs/cortex-m3.md).
+class ApsrM3 {
+    Bool negative
+    Bool zero
+    Bool carry
+    Bool overflow
+
+    constructor() {
+        this.clear()
+    }
+
+    void clear() {
+        this.negative = false
+        this.zero = false
+        this.carry = false
+        this.overflow = false
+    }
+}

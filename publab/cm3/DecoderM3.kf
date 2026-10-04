@@ -1,0 +1,113 @@
+package publab.cm3
+
+import publab.machine
+
+// Fetch and decode, from the flat memory. Mirrors PubVM's and the 8051's
+// decoders — the assembler encodes from the same opcode table this reads.
+
+record DecodedM3(Int opcode, String mnemonic, Int form, Int reg1, Int reg2, Int reg3,
+                 Long imm, Int memBase, Int memOffset, Int address, List<Int> regs, Int length)
+
+void decodeFaultM3(Int opcode, Int pc) {
+    throw "unknown opcode 0x" + toHex(opcode as Long, 2) + " at address 0x" + toHex(pc as Long, 4)
+}
+
+List<Int> emptyRegsM3() {
+    var l: List<Int> = listOf()
+    return l
+}
+
+DecodedM3 decodeAtM3(Memory mem, Int pc) {
+    val opcode = mem.readByte(pc)
+    val look = lookupOpcodeM3(opcode)
+    if (!look.found()) { decodeFaultM3(opcode, pc) }
+    val form = look.form()
+    var reg1 = 0
+    var reg2 = 0
+    var reg3 = 0
+    var imm: Long = 0 as Long
+    var memBase = 0
+    var memOffset = 0
+    var address = 0
+    var regs = emptyRegsM3()
+    var length = instructionLengthM3(form)
+    if (form == formRegM3()) {
+        reg1 = mem.readByte(pc + 1)
+    }
+    if (form == formRegImmM3()) {
+        reg1 = mem.readByte(pc + 1)
+        imm = mem.readWord(pc + 2, immediateBytesM3())
+    }
+    if (form == formRegRegM3()) {
+        reg1 = mem.readByte(pc + 1)
+        reg2 = mem.readByte(pc + 2)
+    }
+    if (form == formRegMemM3()) {
+        reg1 = mem.readByte(pc + 1)
+        memBase = mem.readByte(pc + 2)
+        memOffset = (mem.readWord(pc + 3, offsetBytesM3()) as Int)
+    }
+    if (form == formRegRegRegM3()) {
+        reg1 = mem.readByte(pc + 1)
+        reg2 = mem.readByte(pc + 2)
+        reg3 = mem.readByte(pc + 3)
+    }
+    if (form == formRegRegImmM3()) {
+        reg1 = mem.readByte(pc + 1)
+        reg2 = mem.readByte(pc + 2)
+        imm = mem.readWord(pc + 3, immediateBytesM3())
+    }
+    if (form == formAddrM3()) {
+        address = (mem.readWord(pc + 1, addressBytesM3()) as Int)
+    }
+    if (form == formRegListM3()) {
+        val count = mem.readByte(pc + 1)
+        var i = 0
+        while (i < count) {
+            regs.add(mem.readByte(pc + 2 + i))
+            i = i + 1
+        }
+        length = regListLengthM3(count)
+    }
+    return DecodedM3(opcode, look.mnemonic(), form, reg1, reg2, reg3, imm,
+        memBase, memOffset, address, regs, length)
+}
+
+String regListTextM3(List<Int> regs) {
+    var out = "{"
+    var first = true
+    for (var r in regs) {
+        if (!first) { out = out + ", " }
+        out = out + registerNameM3(r)
+        first = false
+    }
+    return out + "}"
+}
+
+String disassembleM3(DecodedM3 d) {
+    val form = d.form()
+    if (form == formNoneM3()) { return d.mnemonic() }
+    if (form == formRegM3()) { return d.mnemonic() + " " + registerNameM3(d.reg1()) }
+    if (form == formAddrM3()) { return d.mnemonic() + " 0x" + toHex(d.address() as Long, 4) }
+    if (form == formRegListM3()) { return d.mnemonic() + " " + regListTextM3(d.regs()) }
+    if (form == formRegImmM3()) { return d.mnemonic() + " " + registerNameM3(d.reg1()) + ", #" + d.imm() }
+    if (form == formRegRegM3()) {
+        return d.mnemonic() + " " + registerNameM3(d.reg1()) + ", " + registerNameM3(d.reg2())
+    }
+    if (form == formRegMemM3()) {
+        if (d.memOffset() == 0) {
+            return d.mnemonic() + " " + registerNameM3(d.reg1()) + ", [" + registerNameM3(d.memBase()) + "]"
+        }
+        return d.mnemonic() + " " + registerNameM3(d.reg1()) + ", [" + registerNameM3(d.memBase())
+            + ", #" + d.memOffset() + "]"
+    }
+    if (form == formRegRegRegM3()) {
+        return d.mnemonic() + " " + registerNameM3(d.reg1()) + ", " + registerNameM3(d.reg2())
+            + ", " + registerNameM3(d.reg3())
+    }
+    if (form == formRegRegImmM3()) {
+        return d.mnemonic() + " " + registerNameM3(d.reg1()) + ", " + registerNameM3(d.reg2())
+            + ", #" + d.imm()
+    }
+    return d.mnemonic()
+}

@@ -1,0 +1,145 @@
+package publab.cm3
+
+// The Cortex-M3 instruction table (stage A — docs/cortex-m3.md). Mnemonics,
+// registers, flags and memory semantics are the real architecture; the raw
+// opcode BYTE VALUES are this model's own encoding, the same engineering
+// choice PubVM's and the 8051's opcode tables make.
+
+Int formNoneM3() { return 0 }       // HALT
+Int formRegM3() { return 1 }        // PRINT R0 / BX LR
+Int formAddrM3() { return 2 }       // B loop / BL sub
+Int formRegListM3() { return 3 }    // PUSH {R0, LR}      (variable length)
+Int formRegImmM3() { return 4 }     // MOV R0, #5         / CMP R0, #5
+Int formRegRegM3() { return 5 }     // MOV R0, R1         / CMP R0, R1
+Int formRegMemM3() { return 6 }     // LDR R0, [R1, #4]   / STR R0, [R1]
+Int formRegRegRegM3() { return 7 }  // ADD R0, R1, R2
+Int formRegRegImmM3() { return 8 }  // ADD R0, R1, #4
+
+record OpSpecM3(Int opcode, String mnemonic, Int form)
+
+List<OpSpecM3> opcodeTableM3() {
+    var table = listOf(OpSpecM3(0x00, "HALT", formNoneM3()))
+    table.add(OpSpecM3(0x01, "BX", formRegM3()))
+    table.add(OpSpecM3(0x10, "MOV", formRegImmM3()))
+    table.add(OpSpecM3(0x11, "MOV", formRegRegM3()))
+    table.add(OpSpecM3(0x18, "CMP", formRegImmM3()))
+    table.add(OpSpecM3(0x19, "CMP", formRegRegM3()))
+    table.add(OpSpecM3(0x20, "ADD", formRegRegRegM3()))
+    table.add(OpSpecM3(0x21, "ADD", formRegRegImmM3()))
+    table.add(OpSpecM3(0x28, "SUB", formRegRegRegM3()))
+    table.add(OpSpecM3(0x29, "SUB", formRegRegImmM3()))
+    table.add(OpSpecM3(0x30, "AND", formRegRegRegM3()))
+    table.add(OpSpecM3(0x38, "ORR", formRegRegRegM3()))
+    table.add(OpSpecM3(0x40, "EOR", formRegRegRegM3()))
+    table.add(OpSpecM3(0x50, "LDR", formRegMemM3()))
+    table.add(OpSpecM3(0x51, "STR", formRegMemM3()))
+    table.add(OpSpecM3(0x60, "B", formAddrM3()))
+    table.add(OpSpecM3(0x61, "BEQ", formAddrM3()))
+    table.add(OpSpecM3(0x62, "BNE", formAddrM3()))
+    table.add(OpSpecM3(0x63, "BCS", formAddrM3()))
+    table.add(OpSpecM3(0x64, "BCC", formAddrM3()))
+    table.add(OpSpecM3(0x65, "BMI", formAddrM3()))
+    table.add(OpSpecM3(0x66, "BPL", formAddrM3()))
+    table.add(OpSpecM3(0x67, "BVS", formAddrM3()))
+    table.add(OpSpecM3(0x68, "BVC", formAddrM3()))
+    table.add(OpSpecM3(0x69, "BL", formAddrM3()))
+    table.add(OpSpecM3(0x70, "PUSH", formRegListM3()))
+    table.add(OpSpecM3(0x71, "POP", formRegListM3()))
+    table.add(OpSpecM3(0x80, "PRINT", formRegM3()))
+    return table
+}
+
+record OpLookupM3(Bool found, Int opcode, String mnemonic, Int form)
+
+OpLookupM3 lookupInstructionM3(String mnemonic, Int form) {
+    val upper = mnemonic.toUpperCase()
+    for (var spec in opcodeTableM3()) {
+        if (spec.mnemonic() == upper && spec.form() == form) {
+            return OpLookupM3(true, spec.opcode(), spec.mnemonic(), spec.form())
+        }
+    }
+    return OpLookupM3(false, 0, upper, form)
+}
+
+OpLookupM3 lookupOpcodeM3(Int opcode) {
+    for (var spec in opcodeTableM3()) {
+        if (spec.opcode() == opcode) {
+            return OpLookupM3(true, spec.opcode(), spec.mnemonic(), spec.form())
+        }
+    }
+    return OpLookupM3(false, opcode, "?", formNoneM3())
+}
+
+Bool mnemonicExistsM3(String mnemonic) {
+    val upper = mnemonic.toUpperCase()
+    for (var spec in opcodeTableM3()) {
+        if (spec.mnemonic() == upper) { return true }
+    }
+    return false
+}
+
+List<Int> formsForMnemonicM3(String mnemonic) {
+    val upper = mnemonic.toUpperCase()
+    var forms: List<Int> = listOf()
+    for (var spec in opcodeTableM3()) {
+        if (spec.mnemonic() == upper) { forms.add(spec.form()) }
+    }
+    return forms
+}
+
+// Real Thumb-1 restricts most data-processing instructions to low
+// registers (docs/cortex-m3.md's note on RegistersM3.kf) — simplified here
+// to "every operand must be R0-R12", enforced by the assembler.
+Bool mnemonicRequiresLowRegisters(String mnemonic) {
+    val upper = mnemonic.toUpperCase()
+    val lowOnly = listOf("ADD", "SUB", "AND", "ORR", "EOR", "CMP")
+    return lowOnly.contains(upper)
+}
+
+// BX only supports LR in stage A (docs/cortex-m3.md).
+Bool mnemonicRequiresLR(String mnemonic) {
+    return mnemonic.toUpperCase() == "BX"
+}
+
+Int addressBytesM3() { return 2 }
+Int immediateBytesM3() { return 4 } // wordBytes(32)
+Int offsetBytesM3() { return 2 }    // a memory offset fits the address space
+
+// Every form except formRegListM3 (variable length, computed from the
+// parsed register list) has a fixed length.
+Int instructionLengthM3(Int form) {
+    if (form == formNoneM3()) { return 1 }
+    if (form == formRegM3()) { return 2 }
+    if (form == formAddrM3()) { return 1 + addressBytesM3() }
+    if (form == formRegImmM3()) { return 2 + immediateBytesM3() }
+    if (form == formRegRegM3()) { return 3 }
+    if (form == formRegMemM3()) { return 3 + offsetBytesM3() }
+    if (form == formRegRegRegM3()) { return 4 }
+    if (form == formRegRegImmM3()) { return 3 + immediateBytesM3() }
+    return 1
+}
+
+// opcode + 1 count byte + one byte per register.
+Int regListLengthM3(Int count) {
+    return 2 + count
+}
+
+String formDescriptionM3(Int form) {
+    if (form == formNoneM3()) { return "no operands" }
+    if (form == formRegM3()) { return "register" }
+    if (form == formAddrM3()) { return "address or label" }
+    if (form == formRegListM3()) { return "{register list}" }
+    if (form == formRegImmM3()) { return "register, immediate (#n)" }
+    if (form == formRegRegM3()) { return "register, register" }
+    if (form == formRegMemM3()) { return "register, [register] or [register, #offset]" }
+    if (form == formRegRegRegM3()) { return "register, register, register" }
+    if (form == formRegRegImmM3()) { return "register, register, immediate (#n)" }
+    return "unknown"
+}
+
+Int formOperandCountM3(Int form) {
+    if (form == formNoneM3()) { return 0 }
+    if (form == formRegM3() || form == formAddrM3() || form == formRegListM3()) { return 1 }
+    if (form == formRegRegRegM3() || form == formRegRegImmM3()) { return 3 }
+    return 2
+}

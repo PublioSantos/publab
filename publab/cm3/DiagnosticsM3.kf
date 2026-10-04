@@ -1,0 +1,161 @@
+package publab.cm3
+
+// The Cortex-M3 module's own diagnostics — M3xxx codes, parallel to
+// PubASM's ASM0xx and the 8051's I51xxx: its own architecture, its own
+// catalogue.
+
+record DiagnosticM3(String severity, String code, Int line, Int column, List<String> args)
+
+List<DiagnosticM3> emptyDiagnosticsM3() {
+    var l: List<publab.cm3.DiagnosticM3> = listOf()
+    return l
+}
+
+DiagnosticM3 errorAtM3(String code, Int line, Int column, List<String> args) {
+    return DiagnosticM3("error", code, line, column, args)
+}
+
+List<String> noArgsM3() {
+    var l: List<String> = listOf()
+    return l
+}
+
+List<String> args1M3(String a) { return listOf(a) }
+List<String> args2M3(String a, String b) { return listOf(a, b) }
+List<String> args3M3(String a, String b, String c) { return listOf(a, b, c) }
+
+Bool hasErrorsM3(List<DiagnosticM3> diagnostics) {
+    for (var d in diagnostics) {
+        if (d.severity() == "error") { return true }
+    }
+    return false
+}
+
+Bool isPortugueseM3(String language) {
+    return language == "pt" || language == "pt_BR" || language == "pt-BR"
+}
+
+String fillTemplateM3(String template, List<String> args) {
+    var out = template
+    var i = 0
+    while (i < args.size) {
+        var marker = "{" + i + "}"
+        while (out.contains(marker)) {
+            val index = out.indexOf(marker)
+            out = out.substring(0, index) + args.get(i) + out.substring(index + marker.length)
+        }
+        i = i + 1
+    }
+    return out
+}
+
+String messageEnM3(String code) {
+    if (code == "M3001") { return "unknown instruction '{0}'" }
+    if (code == "M3002") { return "invalid operand for {0}" }
+    if (code == "M3003") { return "{0} takes {1} operand(s), but got {2}" }
+    if (code == "M3004") { return "unknown register '{0}'" }
+    if (code == "M3005") { return "immediate {0} does not fit in 32 bits" }
+    if (code == "M3006") { return "offset {0} is outside memory (0-" + (memorySizeM3() - 1) + ")" }
+    if (code == "M3007") { return "undefined label '{0}'" }
+    if (code == "M3008") { return "label '{0}' is already defined (line {1})" }
+    if (code == "M3009") { return "address {0} is outside memory (0-" + (memorySizeM3() - 1) + ")" }
+    if (code == "M3010") { return "unexpected character '{0}'" }
+    if (code == "M3011") { return "malformed number '{0}'" }
+    if (code == "M3012") { return "expected {0}, found {1}" }
+    if (code == "M3013") { return "the program needs {0} bytes but memory has {1}" }
+    if (code == "M3014") { return "'{0}' only works on R0-R12 in this stage, not SP/LR/PC" }
+    if (code == "M3015") { return "'{0}' belongs to a later stage, which is not implemented yet" }
+    if (code == "M3016") { return "'BX' only supports LR in this stage" }
+    return "diagnostic " + code
+}
+
+String hintEnM3(String code) {
+    if (code == "M3001") { return "See the instruction list in docs/cortex-m3.md." }
+    if (code == "M3002") { return "Expected: {1}." }
+    if (code == "M3004") { return "Registers: R0-R12, SP, LR, PC." }
+    if (code == "M3007") { return "Define it by writing '{0}:' on the line you want to jump to." }
+    if (code == "M3010") { return "A comment starts with ';'." }
+    if (code == "M3011") { return "Write a number as 42, 0x2A or 0b101010; an immediate also takes #: #42." }
+    if (code == "M3015") { return "See docs/cortex-m3.md for what is implemented in this stage." }
+    if (code == "M3016") { return "Write 'BX LR'." }
+    return ""
+}
+
+String messagePtM3(String code) {
+    if (code == "M3001") { return "instrução desconhecida '{0}'" }
+    if (code == "M3002") { return "operando inválido para {0}" }
+    if (code == "M3003") { return "{0} recebe {1} operando(s), mas veio {2}" }
+    if (code == "M3004") { return "registrador desconhecido '{0}'" }
+    if (code == "M3005") { return "o imediato {0} não cabe em 32 bits" }
+    if (code == "M3006") { return "o offset {0} está fora da memória (0-" + (memorySizeM3() - 1) + ")" }
+    if (code == "M3007") { return "label não definido '{0}'" }
+    if (code == "M3008") { return "o label '{0}' já foi definido (linha {1})" }
+    if (code == "M3009") { return "o endereço {0} está fora da memória (0-" + (memorySizeM3() - 1) + ")" }
+    if (code == "M3010") { return "caractere inesperado '{0}'" }
+    if (code == "M3011") { return "número malformado '{0}'" }
+    if (code == "M3012") { return "esperado {0}, encontrado {1}" }
+    if (code == "M3013") { return "o programa precisa de {0} bytes, mas a memória tem {1}" }
+    if (code == "M3014") { return "'{0}' só funciona com R0-R12 nesta etapa, não SP/LR/PC" }
+    if (code == "M3015") { return "'{0}' pertence a uma etapa posterior, ainda não implementada" }
+    if (code == "M3016") { return "o 'BX' só suporta LR nesta etapa" }
+    return "diagnóstico " + code
+}
+
+String hintPtM3(String code) {
+    if (code == "M3001") { return "Veja a lista de instruções em docs/cortex-m3.pt_BR.md." }
+    if (code == "M3002") { return "Esperado: {1}." }
+    if (code == "M3004") { return "Registradores: R0-R12, SP, LR, PC." }
+    if (code == "M3007") { return "Defina-o escrevendo '{0}:' na linha para onde quer saltar." }
+    if (code == "M3010") { return "Um comentário começa com ';'." }
+    if (code == "M3011") { return "Escreva um número como 42, 0x2A ou 0b101010; um imediato também leva #: #42." }
+    if (code == "M3015") { return "Veja docs/cortex-m3.pt_BR.md para o que está implementado nesta etapa." }
+    if (code == "M3016") { return "Escreva 'BX LR'." }
+    return ""
+}
+
+String severityWordM3(String severity, String language) {
+    if (isPortugueseM3(language)) {
+        if (severity == "warning") { return "aviso" }
+        return "erro"
+    }
+    return severity
+}
+
+String lineWordM3(String language) {
+    if (isPortugueseM3(language)) { return "Linha" }
+    return "Line"
+}
+
+String columnWordM3(String language) {
+    if (isPortugueseM3(language)) { return "coluna" }
+    return "column"
+}
+
+String renderDiagnosticM3(DiagnosticM3 d, String language) {
+    var head = lineWordM3(language) + " " + d.line()
+    if (d.column() > 0) {
+        head = head + ", " + columnWordM3(language) + " " + d.column()
+    }
+    head = head + ": " + severityWordM3(d.severity(), language) + " [" + d.code() + "]: "
+    var template = messageEnM3(d.code())
+    var hint = hintEnM3(d.code())
+    if (isPortugueseM3(language)) {
+        template = messagePtM3(d.code())
+        hint = hintPtM3(d.code())
+    }
+    head = head + fillTemplateM3(template, d.args())
+    val filledHint = fillTemplateM3(hint, d.args())
+    if (filledHint.length > 0) {
+        return head + "\n  " + filledHint
+    }
+    return head
+}
+
+String renderDiagnosticsM3(List<DiagnosticM3> diagnostics, String language) {
+    var out = ""
+    for (var d in diagnostics) {
+        if (out.length > 0) { out = out + "\n" }
+        out = out + renderDiagnosticM3(d, language)
+    }
+    return out
+}

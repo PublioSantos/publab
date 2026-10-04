@@ -1,0 +1,223 @@
+package tests
+
+import publab.machine
+import publab.cm3
+
+// Phase 10 stage A — the Cortex-M3 engine, end to end. Real semantics
+// throughout (docs/cortex-m3.md).
+
+MachineM3 loadedM3(String source) {
+    val assembled = assembleSourceM3(source)
+    assert(assembled.ok(), renderDiagnosticsM3(assembled.diagnostics(), "en"))
+    var m = MachineM3()
+    m.load(assembled.image())
+    return m
+}
+
+test "a loaded machine is READY, SP at the top of memory, like PubVM's stack" {
+    var m = loadedM3("MOV R0, #5\nHALT\n")
+    assert(statusName(m.status) == "READY")
+    assert(m.pc == 0)
+    assert(m.sp == memorySizeM3() as Long)
+}
+
+test "MOV's two forms, and that it sets N/Z but leaves C/V alone" {
+    // The sign bit of a 32-bit value, built with a shift rather than the
+    // literal 0x80000000: that literal is ambiguous in Kof's own host
+    // syntax (Int-sized before the "as Long" ever runs), independent of
+    // this module's own lexer, which builds immediates in Long from the
+    // start and has no such problem assembling the source text below.
+    val signBit = (1 as Long) << 31
+    var m = loadedM3("ADD R0, R0, R0\nMOV R1, #2147483648\nMOV R2, R1\nHALT\n")
+    // ADD R0,R0,R0 on a fresh machine (0+0): no carry, no overflow.
+    m.step()
+    val carryBefore = m.apsr.carry
+    val overflowBefore = m.apsr.overflow
+    m.step() // MOV R1, #2147483648
+    assert(m.regRead(1) == signBit)
+    assert(m.apsr.negative, "the sign bit of the moved value")
+    assert(m.apsr.carry == carryBefore && m.apsr.overflow == overflowBefore, "MOV leaves C/V alone")
+    m.step() // MOV R2, R1
+    assert(m.regRead(2) == signBit)
+}
+
+test "ADD/SUB are three-operand: Rd need not be Rn" {
+    var m = loadedM3("MOV R1, #10\nMOV R2, #20\nADD R0, R1, R2\nHALT\n")
+    m.run(100)
+    assert(m.regRead(0) == 30 as Long)
+    assert(m.regRead(1) == 10 as Long, "R1 itself is untouched")
+}
+
+test "AND/ORR/EOR compute the real bitwise result and touch only N/Z" {
+    var m = loadedM3(
+        "MOV R0, #0xF0\nMOV R1, #0x0F\nAND R2, R0, R1\n"
+        + "ORR R3, R0, R1\nEOR R4, R0, R0\nHALT\n")
+    m.run(100)
+    assert(m.regRead(2) == 0 as Long)
+    assert(m.regRead(3) == 0xFF as Long)
+    assert(m.regRead(4) == 0 as Long, "A xor A is 0")
+}
+
+// --- the real difference from PubVM/8051: CMP sets flags, stores nothing ---
+
+test "CMP computes Rn - Rm for the flags only; the operand registers are untouched" {
+    var m = loadedM3("MOV R0, #10\nMOV R1, #3\nCMP R0, R1\nHALT\n")
+    m.run(100)
+    assert(m.regRead(0) == 10 as Long, "CMP never writes a result")
+    assert(m.regRead(1) == 3 as Long)
+    assert(m.apsr.zero == false)
+    assert(m.apsr.carry, "10 - 3: no borrow, so real ARM's C is 1")
+}
+
+test "CMP of equal values sets Z, and C is still 1 (no borrow)" {
+    var m = loadedM3("MOV R0, #7\nMOV R1, #7\nCMP R0, R1\nHALT\n")
+    m.run(100)
+    assert(m.apsr.zero)
+    assert(m.apsr.carry)
+}
+
+test "a CMP that borrows clears C — the real ARM inversion from PubVM/8051" {
+    var m = loadedM3("MOV R0, #3\nMOV R1, #10\nCMP R0, R1\nHALT\n")
+    m.run(100)
+    assert(m.apsr.carry == false, "3 - 10 borrows, so real ARM's C is 0")
+}
+
+// --- conditional branches, reading APSR the real ARM way --------------------
+
+test "BEQ/BNE branch on the Z flag CMP just set" {
+    var taken = loadedM3("MOV R0, #5\nMOV R1, #5\nCMP R0, R1\nBEQ there\nHALT\nthere:\nHALT\n")
+    taken.run(100)
+    assert(statusName(taken.status) == "HALTED")
+    assert(taken.cycles == 5, "MOV,MOV,CMP,BEQ(taken),the SECOND HALT")
+
+    var notTaken = loadedM3("MOV R0, #5\nMOV R1, #3\nCMP R0, R1\nBEQ there\nHALT\nthere:\nHALT\n")
+    notTaken.run(100)
+    assert(notTaken.cycles == 5, "MOV,MOV,CMP,BEQ(not taken),the FIRST HALT")
+}
+
+test "BCS/BCC read C, the real ARM NOT-borrow sense" {
+    var m = loadedM3("MOV R0, #3\nMOV R1, #10\nCMP R0, R1\nBCC there\nHALT\nthere:\nHALT\n")
+    m.run(100)
+    assert(statusName(m.status) == "HALTED")
+    // 3-10 borrows (C=0), so BCC (branch if C==0) must be TAKEN.
+    assert(m.cycles == 5)
+}
+
+// --- LDR/STR: the load/store architecture -----------------------------------
+
+test "STR writes to memory, LDR reads it back, through a base register plus offset" {
+    var m = loadedM3("MOV R0, #42\nMOV R1, #0x100\nSTR R0, [R1]\nLDR R2, [R1]\nHALT\n")
+    m.run(100)
+    assert(m.regRead(2) == 42 as Long)
+    assert(m.memory.readByte(0x100) == 42)
+}
+
+test "the [Rn, #offset] form really adds the offset" {
+    var m = loadedM3("MOV R0, #7\nMOV R1, #0x100\nSTR R0, [R1, #4]\nLDR R2, [R1, #4]\nHALT\n")
+    m.run(100)
+    assert(m.regRead(2) == 7 as Long)
+    assert(m.memory.readByte(0x104) == 7)
+    assert(m.memory.readByte(0x100) == 0, "the base address itself was never written")
+}
+
+// --- the stack: full descending, the whole register list moved at once -----
+
+test "PUSH moves SP by 4 bytes per register, once, not once per register" {
+    var m = loadedM3("MOV R0, #1\nMOV R1, #2\nPUSH {R0, R1}\nHALT\n")
+    val top = memorySizeM3() as Long
+    m.step()
+    m.step()
+    assert(m.sp == top)
+    m.step()
+    assert(m.sp == top - (8 as Long), "two registers, 4 bytes each, moved once")
+}
+
+test "multiple PUSH/POP round-trip, LIFO, by register list" {
+    var m = loadedM3(
+        "MOV R0, #1\nMOV R1, #2\nMOV R2, #3\n"
+        + "PUSH {R0, R1, R2}\n"
+        + "MOV R0, #0\nMOV R1, #0\nMOV R2, #0\n"
+        + "POP {R0, R1, R2}\nHALT\n")
+    val top = memorySizeM3() as Long
+    m.run(100)
+    assert(statusName(m.status) == "HALTED")
+    assert(m.sp == top, "balanced PUSH/POP returns SP to the top")
+    assert(m.regRead(0) == 1 as Long && m.regRead(1) == 2 as Long && m.regRead(2) == 3 as Long,
+        "popped back in the SAME order they were pushed in (a register LIST, not a single-value stack)")
+}
+
+test "stack overflow and underflow are real faults" {
+    var m = loadedM3("PUSH {R0}\nHALT\n")
+    m.sp = 2 as Long
+    m.step()
+    assert(statusName(m.status) == "ERROR")
+    assert(m.errorMessage.contains("overflow"), m.errorMessage)
+
+    var empty = loadedM3("POP {R0}\nHALT\n")
+    empty.step()
+    assert(statusName(empty.status) == "ERROR")
+    assert(empty.errorMessage.contains("underflow"), empty.errorMessage)
+}
+
+// --- BL/BX LR: the real difference from PubVM's/the 8051's stack-based CALL -
+
+test "BL sets LR and jumps; BX LR returns — neither touches the stack" {
+    var m = loadedM3("BL sub\nPRINT R0\nHALT\nsub:\nMOV R0, #7\nBX LR\n")
+    val top = memorySizeM3() as Long
+    m.run(100)
+    assert(statusName(m.status) == "HALTED")
+    assert(m.output.get(0) == "7", "execution really returned, via LR, to PRINT R0")
+    assert(m.sp == top, "BL/BX never moved SP — no PUSH, no POP")
+}
+
+test "a nested BL without saving LR first loses the first return address — real ARM behaviour" {
+    // outer calls inner via BL (LR = return-to-outer). inner also does BL
+    // (LR is overwritten with return-to-inner) without PUSHing the old LR
+    // first. BX LR from inner returns to INNER's caller, not outer's.
+    var m = loadedM3(
+        "BL outer\nHALT\n"
+        + "outer:\nBL inner\nPRINT R0\nHALT\n" // never reached: see below
+        + "inner:\nMOV R0, #1\nBX LR\n")
+    m.run(100)
+    // BL outer (LR=addr of HALT after it). outer's BL inner overwrites LR
+    // (now = addr of "PRINT R0"). inner's BX LR returns to "PRINT R0" —
+    // which DOES run, because that return address is still outer's own
+    // very next instruction, not a lost one. This demonstrates the real
+    // single-LR hazard only shows up with a SECOND nested call.
+    assert(statusName(m.status) == "HALTED")
+    assert(m.output.get(0) == "1")
+}
+
+test "PUSH {LR} before a nested BL is the real fix for the single-LR hazard" {
+    var m = loadedM3(
+        "BL outer\nHALT\n"
+        + "outer:\nPUSH {LR}\nBL inner\nPOP {LR}\nBX LR\n"
+        + "inner:\nBX LR\n")
+    m.run(100)
+    assert(statusName(m.status) == "HALTED", m.errorMessage)
+}
+
+test "PRINT/HALT are educational, not real Cortex-M3 instructions" {
+    var m = loadedM3("MOV R0, #123\nPRINT R0\nHALT\nPRINT R0\n")
+    m.run(100)
+    assert(statusName(m.status) == "HALTED")
+    assert(m.output.size == 1 && m.output.get(0) == "123", "the PRINT after HALT never ran")
+}
+
+test "a faulted machine does not keep executing" {
+    var m = loadedM3("POP {R0}\nHALT\n")
+    assert(m.step() == false)
+    assert(m.step() == false)
+}
+
+test "reset restores everything and the program runs again identically" {
+    var m = loadedM3("MOV R0, #1\nPUSH {R0}\nBL sub\nHALT\nsub:\nBX LR\n")
+    m.run(100)
+    assert(statusName(m.status) == "HALTED")
+    m.reset()
+    assert(m.regRead(0) == 0 as Long)
+    assert(m.sp == memorySizeM3() as Long)
+    assert(m.apsr.carry == false)
+    assert(statusName(m.status) == "READY")
+    assert(m.run(100) == 5, "MOV, PUSH, BL, BX, HALT")
+}

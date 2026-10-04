@@ -1,0 +1,307 @@
+package publab.cm3
+
+import publab.machine
+
+// The Cortex-M3 execution engine (stage A). Mirrors PubVM's and the 8051's
+// in shape; the semantics are the real Cortex-M3's (docs/cortex-m3.md).
+//
+// The stack is full descending, like PubVM's (decrement before write) —
+// SP starts one past the top of memory, the same convention, even though
+// the exact reset value and memory map are this model's own choice, not a
+// specific real vector table.
+
+Int memorySizeM3() { return 65536 }
+
+record MachineStateM3(List<Long> registers, Long sp, Long lr, Int pc,
+                      Bool negative, Bool zero, Bool carry, Bool overflow,
+                      Int cycles, MachineStatus status, String errorMessage,
+                      List<String> output, String currentInstruction)
+
+void stackOverflowFaultM3() {
+    throw "stack overflow: memory has no room left below SP"
+}
+
+void stackUnderflowFaultM3() {
+    throw "stack underflow: nothing has been pushed"
+}
+
+class MachineM3 {
+    RegisterFile registers
+    Long sp
+    Long lr
+    Memory memory
+    ApsrM3 apsr
+    Int pc
+    Int cycles
+    MachineStatus status
+    String errorMessage
+    List<String> output
+    List<Int> image
+
+    constructor() {
+        this.registers = RegisterFile(widthM3(), lowRegisterCount())
+        this.memory = Memory(memorySizeM3())
+        this.apsr = ApsrM3()
+        this.sp = memorySizeM3() as Long
+        this.lr = 0 as Long
+        this.pc = 0
+        this.cycles = 0
+        this.status = MachineStatus.Ready
+        this.errorMessage = ""
+        this.output = emptyStringList()
+        this.image = emptyIntList()
+    }
+
+    void load(List<Int> image) {
+        this.image = image
+        this.reset()
+    }
+
+    void reset() {
+        this.memory.clear()
+        this.memory.loadImage(this.image, 0)
+        this.registers.clear()
+        this.apsr.clear()
+        this.sp = memorySizeM3() as Long
+        this.lr = 0 as Long
+        this.pc = 0
+        this.cycles = 0
+        this.output = emptyStringList()
+        this.errorMessage = ""
+        this.status = MachineStatus.Ready
+    }
+
+    Bool canRun() {
+        return this.status != MachineStatus.Halted && this.status != MachineStatus.Error
+    }
+
+    Bool step() {
+        if (!this.canRun()) { return false }
+        val executed = this.executeNext()
+        if (executed && this.status == MachineStatus.Running) {
+            this.status = MachineStatus.Paused
+        }
+        return executed
+    }
+
+    Int run(Int maxCycles) {
+        var executed = 0
+        while (this.canRun() && executed < maxCycles) {
+            if (!this.executeNext()) { return executed }
+            executed = executed + 1
+        }
+        if (this.canRun()) { this.status = MachineStatus.Paused }
+        return executed
+    }
+
+    Bool executeNext() {
+        this.status = MachineStatus.Running
+        try {
+            val decoded = decodeAtM3(this.memory, this.pc)
+            this.execute(decoded)
+            this.cycles = this.cycles + 1
+            return true
+        } catch (String fault) {
+            this.status = MachineStatus.Error
+            this.errorMessage = fault
+            return false
+        }
+    }
+
+    Long regRead(Int id) {
+        if (id == regSP()) { return this.sp }
+        if (id == regLR()) { return this.lr }
+        return this.registers.read(id)
+    }
+
+    void regWrite(Int id, Long value) {
+        if (id == regSP()) { this.sp = wordWrap(value, widthM3()); return }
+        if (id == regLR()) { this.lr = wordWrap(value, widthM3()); return }
+        this.registers.write(id, value)
+    }
+
+    void applyArith(AluResultM3 r) {
+        this.apsr.negative = r.negative()
+        this.apsr.zero = r.zero()
+        this.apsr.carry = r.carry()
+        this.apsr.overflow = r.overflow()
+    }
+
+    void applyLogic(LogicResultM3 r) {
+        this.apsr.negative = r.negative()
+        this.apsr.zero = r.zero()
+        // C and V are left exactly as they were — see docs/cortex-m3.md.
+    }
+
+    // PUSH/POP move the whole list at once: SP changes ONCE, by 4 bytes per
+    // register, not once per register — the real STMDB/LDM shape.
+    void pushList(List<Int> regs) {
+        val total = (regs.size * 4) as Long
+        val newSp = this.sp - total
+        if (newSp < (0 as Long)) { stackOverflowFaultM3() }
+        this.sp = newSp
+        var offset = 0
+        for (var r in regs) {
+            this.memory.writeWord((this.sp as Int) + offset, 4, this.regRead(r))
+            offset = offset + 4
+        }
+    }
+
+    void popList(List<Int> regs) {
+        val total = (regs.size * 4) as Long
+        if (this.sp + total > (memorySizeM3() as Long)) { stackUnderflowFaultM3() }
+        var offset = 0
+        for (var r in regs) {
+            this.regWrite(r, this.memory.readWord((this.sp as Int) + offset, 4))
+            offset = offset + 4
+        }
+        this.sp = this.sp + total
+    }
+
+    Bool conditionHolds(String mnemonic) {
+        if (mnemonic == "BEQ") { return this.apsr.zero }
+        if (mnemonic == "BNE") { return !this.apsr.zero }
+        if (mnemonic == "BCS") { return this.apsr.carry }
+        if (mnemonic == "BCC") { return !this.apsr.carry }
+        if (mnemonic == "BMI") { return this.apsr.negative }
+        if (mnemonic == "BPL") { return !this.apsr.negative }
+        if (mnemonic == "BVS") { return this.apsr.overflow }
+        return !this.apsr.overflow // BVC
+    }
+
+    void execute(DecodedM3 d) {
+        val next = this.pc + d.length()
+        val mnemonic = d.mnemonic()
+
+        if (mnemonic == "HALT") {
+            this.status = MachineStatus.Halted
+            return
+        }
+        if (mnemonic == "MOV") {
+            val value = if (d.form() == formRegImmM3()) d.imm() else this.regRead(d.reg2())
+            this.applyLogic(aluM3MovFlags(value))
+            this.regWrite(d.reg1(), value)
+            this.pc = next
+            return
+        }
+        if (mnemonic == "CMP") {
+            val rhs = if (d.form() == formRegImmM3()) d.imm() else this.regRead(d.reg2())
+            this.applyArith(aluM3Sub(this.regRead(d.reg1()), rhs))
+            this.pc = next
+            return
+        }
+        if (mnemonic == "ADD") {
+            val rhs = if (d.form() == formRegRegImmM3()) d.imm() else this.regRead(d.reg3())
+            val r = aluM3Add(this.regRead(d.reg2()), rhs)
+            this.applyArith(r)
+            this.regWrite(d.reg1(), r.value())
+            this.pc = next
+            return
+        }
+        if (mnemonic == "SUB") {
+            val rhs = if (d.form() == formRegRegImmM3()) d.imm() else this.regRead(d.reg3())
+            val r = aluM3Sub(this.regRead(d.reg2()), rhs)
+            this.applyArith(r)
+            this.regWrite(d.reg1(), r.value())
+            this.pc = next
+            return
+        }
+        if (mnemonic == "AND") {
+            val r = aluM3And(this.regRead(d.reg2()), this.regRead(d.reg3()))
+            this.applyLogic(r)
+            this.regWrite(d.reg1(), r.value())
+            this.pc = next
+            return
+        }
+        if (mnemonic == "ORR") {
+            val r = aluM3Orr(this.regRead(d.reg2()), this.regRead(d.reg3()))
+            this.applyLogic(r)
+            this.regWrite(d.reg1(), r.value())
+            this.pc = next
+            return
+        }
+        if (mnemonic == "EOR") {
+            val r = aluM3Eor(this.regRead(d.reg2()), this.regRead(d.reg3()))
+            this.applyLogic(r)
+            this.regWrite(d.reg1(), r.value())
+            this.pc = next
+            return
+        }
+        if (mnemonic == "LDR") {
+            val address = (this.regRead(d.memBase()) as Int) + d.memOffset()
+            this.regWrite(d.reg1(), this.memory.readWord(address, 4))
+            this.pc = next
+            return
+        }
+        if (mnemonic == "STR") {
+            val address = (this.regRead(d.memBase()) as Int) + d.memOffset()
+            this.memory.writeWord(address, 4, this.regRead(d.reg1()))
+            this.pc = next
+            return
+        }
+        if (mnemonic == "B") {
+            this.pc = d.address()
+            return
+        }
+        if (mnemonic == "BL") {
+            this.lr = next as Long
+            this.pc = d.address()
+            return
+        }
+        if (mnemonic == "BX") {
+            this.pc = (this.lr as Int)
+            return
+        }
+        if (mnemonic == "PUSH") {
+            this.pushList(d.regs())
+            this.pc = next
+            return
+        }
+        if (mnemonic == "POP") {
+            this.popList(d.regs())
+            this.pc = next
+            return
+        }
+        if (mnemonic == "PRINT") {
+            this.output.add("" + this.regRead(d.reg1()))
+            this.pc = next
+            return
+        }
+        if (mnemonic == "BEQ" || mnemonic == "BNE" || mnemonic == "BCS" || mnemonic == "BCC"
+                || mnemonic == "BMI" || mnemonic == "BPL" || mnemonic == "BVS" || mnemonic == "BVC") {
+            if (this.conditionHolds(mnemonic)) { this.pc = d.address() } else { this.pc = next }
+            return
+        }
+        this.unknownMnemonic(mnemonic)
+    }
+
+    void unknownMnemonic(String mnemonic) {
+        throw "instruction decoded but not implemented by the Cortex-M3 engine: " + mnemonic
+    }
+
+    String currentInstructionText() {
+        try {
+            val d = decodeAtM3(this.memory, this.pc)
+            return disassembleM3(d)
+        } catch (String fault) {
+            return "?"
+        }
+    }
+
+    List<Long> registerSnapshot() {
+        var values: List<Long> = listOf()
+        var i = 0
+        while (i < lowRegisterCount()) {
+            values.add(this.registers.read(i))
+            i = i + 1
+        }
+        return values
+    }
+
+    MachineStateM3 snapshot() {
+        return MachineStateM3(this.registerSnapshot(), this.sp, this.lr, this.pc,
+            this.apsr.negative, this.apsr.zero, this.apsr.carry, this.apsr.overflow,
+            this.cycles, this.status, this.errorMessage,
+            copyStringList(this.output), this.currentInstructionText())
+    }
+}

@@ -1,0 +1,182 @@
+package publab.cm3
+
+// The Cortex-M3 assembler's lexer. One instruction per line. A comment
+// starts with ';'. Token kinds: ident, number, comma, colon, hash,
+// lbracket, rbracket, lbrace, rbrace, eol, eof.
+//
+// Braces are the one token neither PubASM's nor the 8051's lexer needs:
+// real Thumb `PUSH`/`POP` take a register LIST in braces (`{R0, LR}`),
+// unlike every single-register PUSH/POP this project has written so far.
+
+record TokenM3(String kind, String text, Long value, Int line, Int column)
+
+record LexResultM3(List<TokenM3> tokens, List<DiagnosticM3> diagnostics)
+
+List<TokenM3> emptyTokensM3() {
+    var l: List<publab.cm3.TokenM3> = listOf()
+    return l
+}
+
+Bool isDigitCharM3(Char c) {
+    return c >= '0' && c <= '9'
+}
+
+Bool isLetterCharM3(Char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
+}
+
+Bool isIdentCharM3(Char c) {
+    return isLetterCharM3(c) || isDigitCharM3(c)
+}
+
+Bool isHexDigitCharM3(Char c) {
+    return isDigitCharM3(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+}
+
+Int hexDigitValueM3(Char c) {
+    if (isDigitCharM3(c)) {
+        return (c as Int) - ('0' as Int)
+    } else if (c >= 'a' && c <= 'f') {
+        return 10 + (c as Int) - ('a' as Int)
+    } else {
+        return 10 + (c as Int) - ('A' as Int)
+    }
+}
+
+Long literalCeilingM3() {
+    return 999999999999 as Long
+}
+
+record NumberScanM3(Bool ok, Long value, String text, Int next)
+
+NumberScanM3 scanNumberM3(String source, Int start) {
+    val n = source.length
+    var i = start
+    var negative = false
+    if (source.charAt(i) == '-') {
+        negative = true
+        i = i + 1
+    }
+    var base = 10
+    if (i + 1 < n && source.charAt(i) == '0') {
+        val marker = source.charAt(i + 1)
+        if (marker == 'x' || marker == 'X') {
+            base = 16
+            i = i + 2
+        } else if (marker == 'b' || marker == 'B') {
+            base = 2
+            i = i + 2
+        }
+    }
+    var digits = 0
+    var malformed = false
+    var value: Long = 0 as Long
+    var scanning = true
+    while (scanning && i < n) {
+        val c = source.charAt(i)
+        if (!isIdentCharM3(c)) {
+            scanning = false
+        } else {
+            var digitValue = -1
+            if (base == 16 && isHexDigitCharM3(c)) {
+                digitValue = hexDigitValueM3(c)
+            } else if (base == 10 && isDigitCharM3(c)) {
+                digitValue = hexDigitValueM3(c)
+            } else if (base == 2 && (c == '0' || c == '1')) {
+                digitValue = hexDigitValueM3(c)
+            }
+            if (digitValue < 0) {
+                malformed = true
+            } else {
+                value = value * (base as Long) + (digitValue as Long)
+                if (value > literalCeilingM3()) { malformed = true }
+            }
+            digits = digits + 1
+            i = i + 1
+        }
+    }
+    val text = source.substring(start, i)
+    if (digits == 0 || malformed) {
+        return NumberScanM3(false, 0 as Long, text, i)
+    }
+    if (negative) {
+        return NumberScanM3(true, (0 as Long) - value, text, i)
+    }
+    return NumberScanM3(true, value, text, i)
+}
+
+Int skipToLineEndM3(String source, Int from) {
+    val n = source.length
+    var i = from
+    while (i < n && source.charAt(i) != '\n') { i = i + 1 }
+    return i
+}
+
+Bool startsNumberM3(String source, Int i) {
+    val n = source.length
+    val c = source.charAt(i)
+    if (isDigitCharM3(c)) { return true }
+    return c == '-' && i + 1 < n && isDigitCharM3(source.charAt(i + 1))
+}
+
+LexResultM3 lexSourceM3(String source) {
+    var tokens = emptyTokensM3()
+    var diagnostics = emptyDiagnosticsM3()
+    val n = source.length
+    var i = 0
+    var line = 1
+    var lineStart = 0
+    while (i < n) {
+        val c = source.charAt(i)
+        val column = i - lineStart + 1
+        if (c == '\n') {
+            tokens.add(TokenM3("eol", "", 0 as Long, line, column))
+            i = i + 1
+            line = line + 1
+            lineStart = i
+        } else if (c == ' ' || c == '\t' || c == '\r') {
+            i = i + 1
+        } else if (c == ';') {
+            i = skipToLineEndM3(source, i)
+        } else if (c == ',') {
+            tokens.add(TokenM3("comma", ",", 0 as Long, line, column))
+            i = i + 1
+        } else if (c == ':') {
+            tokens.add(TokenM3("colon", ":", 0 as Long, line, column))
+            i = i + 1
+        } else if (c == '#') {
+            tokens.add(TokenM3("hash", "#", 0 as Long, line, column))
+            i = i + 1
+        } else if (c == '[') {
+            tokens.add(TokenM3("lbracket", "[", 0 as Long, line, column))
+            i = i + 1
+        } else if (c == ']') {
+            tokens.add(TokenM3("rbracket", "]", 0 as Long, line, column))
+            i = i + 1
+        } else if (c == '{') {
+            tokens.add(TokenM3("lbrace", "{", 0 as Long, line, column))
+            i = i + 1
+        } else if (c == '}') {
+            tokens.add(TokenM3("rbrace", "}", 0 as Long, line, column))
+            i = i + 1
+        } else if (startsNumberM3(source, i)) {
+            val scan = scanNumberM3(source, i)
+            if (scan.ok()) {
+                tokens.add(TokenM3("number", scan.text(), scan.value(), line, column))
+            } else {
+                diagnostics.add(errorAtM3("M3011", line, column, args1M3(scan.text())))
+            }
+            i = scan.next()
+        } else if (isLetterCharM3(c)) {
+            var j = i
+            while (j < n && isIdentCharM3(source.charAt(j))) { j = j + 1 }
+            tokens.add(TokenM3("ident", source.substring(i, j), 0 as Long, line, column))
+            i = j
+        } else {
+            diagnostics.add(errorAtM3("M3010", line, column, args1M3("" + c)))
+            i = i + 1
+        }
+    }
+    tokens.add(TokenM3("eof", "", 0 as Long, line, n - lineStart + 1))
+    return LexResultM3(tokens, diagnostics)
+}

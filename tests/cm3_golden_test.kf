@@ -1,0 +1,79 @@
+package tests
+
+import publab.machine
+import publab.cm3
+
+// An end-to-end program exercising the Cortex-M3 model the way a real ARM
+// programmer would write one — CMP + a conditional branch, not a flag left
+// over from the last arithmetic instruction the way PubVM's and the 8051's
+// loops work. The closest thing phase 10 stage A has to PubVM's
+// golden_test.kf / the 8051's i8051_golden_test.kf.
+
+String countdownM3() {
+    return "MOV R0, #3\n"
+        + "loop:\n"
+        + "PRINT R0\n"
+        + "SUB R0, R0, #1\n"
+        + "CMP R0, #0\n"
+        + "BNE loop\n"
+        + "PRINT R0\n"
+        + "HALT\n"
+}
+
+test "GOLDEN: a countdown written the real ARM way — CMP, then a conditional branch" {
+    val assembled = assembleSourceM3(countdownM3())
+    assert(assembled.ok(), renderDiagnosticsM3(assembled.diagnostics(), "en"))
+    var m = MachineM3()
+    m.load(assembled.image())
+    m.run(1000)
+    assert(statusName(m.status) == "HALTED")
+    assert(m.output.get(0) == "3" && m.output.get(1) == "2")
+    assert(m.output.get(2) == "1" && m.output.get(3) == "0")
+    assert(m.output.size == 4)
+}
+
+test "GOLDEN: the same program, stepped — SUB alone does not decide the branch, CMP does" {
+    var m = MachineM3()
+    m.load(assembleSourceM3(countdownM3()).image())
+    m.step() // MOV R0, #3
+    m.step() // PRINT R0
+    m.step() // SUB R0, R0, #1  -> R0 = 2
+    assert(m.regRead(0) == 2 as Long)
+    // SUB itself DID set the flags (real ARM does not separate this the
+    // way PubVM/8051 don't either) — but the point of writing CMP in real
+    // code is that the NEXT instruction's flags are the ones a branch
+    // reads, whichever instruction that happens to be.
+    m.step() // CMP R0, #0 -> not equal, Z=false
+    assert(m.apsr.zero == false)
+    m.step() // BNE loop (taken)
+    assert(m.currentInstructionText() == "PRINT R0", "jumped back to the top of the loop")
+}
+
+test "GOLDEN: a leaf subroutine via BL/BX LR moves no stack at all, unlike PubVM/8051's CALL" {
+    var m = MachineM3()
+    val assembled = assembleSourceM3(
+        "MOV R0, #1\nBL double\nPRINT R0\nHALT\n"
+        + "double:\nADD R0, R0, R0\nBX LR\n")
+    assert(assembled.ok())
+    m.load(assembled.image())
+    val topOfStack = memorySizeM3() as Long
+    m.run(1000)
+    assert(statusName(m.status) == "HALTED")
+    assert(m.output.get(0) == "2")
+    assert(m.sp == topOfStack, "a leaf call through BL/BX never touches SP")
+}
+
+test "GOLDEN: a nested call saves LR on the stack first — PUSH {LR} / POP {LR}" {
+    var m = MachineM3()
+    val assembled = assembleSourceM3(
+        "BL outer\nPRINT R0\nHALT\n"
+        + "outer:\nPUSH {LR}\nMOV R0, #1\nBL inner\nADD R0, R0, R1\nPOP {LR}\nBX LR\n"
+        + "inner:\nMOV R1, #10\nBX LR\n")
+    assert(assembled.ok(), renderDiagnosticsM3(assembled.diagnostics(), "en"))
+    m.load(assembled.image())
+    val topOfStack = memorySizeM3() as Long
+    m.run(1000)
+    assert(statusName(m.status) == "HALTED", m.errorMessage)
+    assert(m.output.get(0) == "11", "outer's R0 (1) plus inner's R1 (10)")
+    assert(m.sp == topOfStack, "the PUSH {LR} / POP {LR} balanced out")
+}

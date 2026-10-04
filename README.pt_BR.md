@@ -124,7 +124,7 @@ abaixo é garantida pela suíte de testes.
 | 7 | Camada educacional | **concluída** |
 | 8 | Advanced Mode — X, Y, SP, FP, stack, shifts, saltos extras | **concluída** |
 | 9 | Modelo educacional do 8051 | etapas A-B concluídas (núcleo + assembler + P0, ainda sem UI) |
-| 10 | Modelo educacional do Cortex-M3 | escopo documentado, não implementada |
+| 10 | Modelo educacional do Cortex-M3 | etapa A concluída (núcleo + assembler, ainda sem UI) |
 | 11 | Comparação entre arquiteturas | não iniciada |
 | 12 | Export | não iniciada |
 

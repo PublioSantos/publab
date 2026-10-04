@@ -1,0 +1,55 @@
+package publab.cm3
+
+import publab.machine
+
+// The Cortex-M3 ALU. Fixed 32-bit width always — Cortex-M3 has no variants
+// the way PubVM does.
+//
+// Real ARM defines C on a subtract as NOT borrow — the opposite sense from
+// PubVM's and the 8051's "borrow occurred" C (docs/cortex-m3.md). This is
+// kept as the real inversion on purpose, not normalised to match PubVM.
+
+Int widthM3() { return 32 }
+
+record AluResultM3(Long value, Bool negative, Bool zero, Bool carry, Bool overflow)
+
+AluResultM3 aluM3Add(Long a, Long b) {
+    val x = wordWrap(a, widthM3())
+    val y = wordWrap(b, widthM3())
+    val raw = x + y
+    val stored = wordWrap(raw, widthM3())
+    val carry = raw > wordMask(widthM3())
+    val signA = wordIsNegative(x, widthM3())
+    val signB = wordIsNegative(y, widthM3())
+    val signR = wordIsNegative(stored, widthM3())
+    val overflow = (signA == signB) && (signR != signA)
+    return AluResultM3(stored, signR, stored == (0 as Long), carry, overflow)
+}
+
+// Shared by SUB and CMP (CMP just discards `.value()`).
+AluResultM3 aluM3Sub(Long a, Long b) {
+    val x = wordWrap(a, widthM3())
+    val y = wordWrap(b, widthM3())
+    val stored = wordWrap(x - y, widthM3())
+    val borrowed = x < y
+    val carry = !borrowed // real ARM: C = NOT borrow, the inverse of PubVM's/8051's C
+    val signA = wordIsNegative(x, widthM3())
+    val signB = wordIsNegative(y, widthM3())
+    val signR = wordIsNegative(stored, widthM3())
+    val overflow = (signA != signB) && (signR != signA)
+    return AluResultM3(stored, signR, stored == (0 as Long), carry, overflow)
+}
+
+// AND/ORR/EOR and MOV all touch only N/Z (docs/cortex-m3.md's flags table)
+// — C and V are left to the caller to keep as they were.
+record LogicResultM3(Long value, Bool negative, Bool zero)
+
+LogicResultM3 logicResultM3(Long value) {
+    val stored = wordWrap(value, widthM3())
+    return LogicResultM3(stored, wordIsNegative(stored, widthM3()), stored == (0 as Long))
+}
+
+LogicResultM3 aluM3And(Long a, Long b) { return logicResultM3(wordWrap(a, widthM3()) & wordWrap(b, widthM3())) }
+LogicResultM3 aluM3Orr(Long a, Long b) { return logicResultM3(wordWrap(a, widthM3()) | wordWrap(b, widthM3())) }
+LogicResultM3 aluM3Eor(Long a, Long b) { return logicResultM3(wordWrap(a, widthM3()) ^ wordWrap(b, widthM3())) }
+LogicResultM3 aluM3MovFlags(Long value) { return logicResultM3(value) }

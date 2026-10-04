@@ -1,0 +1,319 @@
+package publab.cm3
+
+// The Cortex-M3 assembler's parser. Operand kinds: reg, imm (#n), mem
+// ([Rn] or [Rn, #offset]), label (a bare identifier, a branch target),
+// reglist ({R0, R1, LR} — PUSH/POP's real register-list operand, the one
+// shape neither PubASM's nor the 8051's parser needs).
+
+record OperandM3(String kind, Int reg, Long value, String label, List<Int> regs, Int line, Int column)
+
+record ParsedInstructionM3(String mnemonic, List<OperandM3> operands, Int line, Int column)
+
+record LabelDefM3(String name, Int instructionIndex, Int line, Int column)
+
+record ParseResultM3(List<ParsedInstructionM3> instructions, List<LabelDefM3> labels,
+                     List<DiagnosticM3> diagnostics)
+
+List<Int> emptyRegListM3() {
+    var l: List<Int> = listOf()
+    return l
+}
+
+List<OperandM3> emptyOperandsM3() {
+    var l: List<publab.cm3.OperandM3> = listOf()
+    return l
+}
+
+List<ParsedInstructionM3> emptyInstructionsM3() {
+    var l: List<publab.cm3.ParsedInstructionM3> = listOf()
+    return l
+}
+
+List<LabelDefM3> emptyLabelsM3() {
+    var l: List<publab.cm3.LabelDefM3> = listOf()
+    return l
+}
+
+OperandM3 registerOperandM3(Int id, Int line, Int column) {
+    return OperandM3("reg", id, 0 as Long, "", emptyRegListM3(), line, column)
+}
+
+OperandM3 immediateOperandM3(Long value, Int line, Int column) {
+    return OperandM3("imm", 0, value, "", emptyRegListM3(), line, column)
+}
+
+OperandM3 memOperandM3(Int baseReg, Long offset, Int line, Int column) {
+    return OperandM3("mem", baseReg, offset, "", emptyRegListM3(), line, column)
+}
+
+OperandM3 labelOperandM3(String name, Int line, Int column) {
+    return OperandM3("label", 0, 0 as Long, name, emptyRegListM3(), line, column)
+}
+
+OperandM3 regListOperandM3(List<Int> regs, Int line, Int column) {
+    return OperandM3("reglist", 0, 0 as Long, "", regs, line, column)
+}
+
+class ParserM3 {
+    List<TokenM3> tokens
+    Int position
+    List<ParsedInstructionM3> instructions
+    List<LabelDefM3> labels
+    List<DiagnosticM3> diagnostics
+
+    constructor(List<TokenM3> tokens) {
+        this.tokens = tokens
+        this.position = 0
+        this.instructions = emptyInstructionsM3()
+        this.labels = emptyLabelsM3()
+        this.diagnostics = emptyDiagnosticsM3()
+    }
+
+    TokenM3 peek() {
+        return this.tokens.get(this.position)
+    }
+
+    TokenM3 peekAhead(Int offset) {
+        val index = this.position + offset
+        if (index >= this.tokens.size) { return this.tokens.get(this.tokens.size - 1) }
+        return this.tokens.get(index)
+    }
+
+    TokenM3 advance() {
+        val token = this.peek()
+        if (this.position < this.tokens.size - 1) { this.position = this.position + 1 }
+        return token
+    }
+
+    Bool atEnd() {
+        return this.peek().kind() == "eof"
+    }
+
+    void skipLine() {
+        while (this.peek().kind() != "eol" && this.peek().kind() != "eof") { this.advance() }
+        if (this.peek().kind() == "eol") { this.advance() }
+    }
+
+    void reportExpected(String expected, TokenM3 found) {
+        this.diagnostics.add(errorAtM3("M3012", found.line(), found.column(),
+            args2M3(expected, describeTokenM3(found))))
+    }
+
+    void parseProgram() {
+        while (!this.atEnd()) {
+            if (this.peek().kind() == "eol") {
+                this.advance()
+            } else if (this.peek().kind() == "ident" && this.peekAhead(1).kind() == "colon") {
+                val name = this.advance()
+                this.advance()
+                this.labels.add(LabelDefM3(name.text(), this.instructions.size,
+                    name.line(), name.column()))
+            } else if (this.peek().kind() == "ident") {
+                this.parseInstruction()
+            } else {
+                this.reportExpected("instruction or label", this.peek())
+                this.skipLine()
+            }
+        }
+    }
+
+    void parseInstruction() {
+        val mnemonic = this.advance()
+        var operands = emptyOperandsM3()
+        var expectOperand = true
+        var failed = false
+        while (!failed && this.peek().kind() != "eol" && this.peek().kind() != "eof") {
+            if (!expectOperand) {
+                if (this.peek().kind() == "comma") {
+                    this.advance()
+                    expectOperand = true
+                } else {
+                    this.reportExpected("',' or end of line", this.peek())
+                    this.skipLine()
+                    failed = true
+                }
+            } else {
+                val parsed = this.parseOperand()
+                if (parsed.ok()) {
+                    operands.add(parsed.operand())
+                    expectOperand = false
+                } else {
+                    this.skipLine()
+                    failed = true
+                }
+            }
+        }
+        if (!failed) {
+            if (expectOperand && operands.size > 0) {
+                this.reportExpected("operand", this.peek())
+            } else {
+                this.instructions.add(ParsedInstructionM3(mnemonic.text(), operands,
+                    mnemonic.line(), mnemonic.column()))
+            }
+            if (this.peek().kind() == "eol") { this.advance() }
+        }
+    }
+
+    OperandParseM3 parseOperand() {
+        val token = this.peek()
+        if (token.kind() == "hash") {
+            this.advance()
+            val numberToken = this.peek()
+            if (numberToken.kind() != "number") {
+                this.reportExpected("a number after '#'", numberToken)
+                return OperandParseM3(false, labelOperandM3("", token.line(), token.column()))
+            }
+            this.advance()
+            return OperandParseM3(true, immediateOperandM3(numberToken.value(), token.line(), token.column()))
+        }
+        if (token.kind() == "lbracket") {
+            return this.parseMemOperand()
+        }
+        if (token.kind() == "lbrace") {
+            return this.parseRegList()
+        }
+        if (token.kind() == "ident") {
+            this.advance()
+            val found = lookupRegisterM3(token.text())
+            if (found.found()) {
+                return OperandParseM3(true, registerOperandM3(found.id(), token.line(), token.column()))
+            }
+            if (isReservedNameM3(token.text())) {
+                this.diagnostics.add(errorAtM3("M3015", token.line(), token.column(),
+                    args1M3(token.text().toUpperCase())))
+                return OperandParseM3(false, labelOperandM3("", token.line(), token.column()))
+            }
+            return OperandParseM3(true, labelOperandM3(token.text(), token.line(), token.column()))
+        }
+        this.reportExpected("operand", token)
+        return OperandParseM3(false, labelOperandM3("", token.line(), token.column()))
+    }
+
+    // [Rn] or [Rn, #offset]
+    OperandParseM3 parseMemOperand() {
+        val open = this.advance()
+        val baseToken = this.peek()
+        if (baseToken.kind() != "ident") {
+            this.reportExpected("a base register", baseToken)
+            return OperandParseM3(false, memOperandM3(0, 0 as Long, open.line(), open.column()))
+        }
+        this.advance()
+        val found = lookupRegisterM3(baseToken.text())
+        if (!found.found()) {
+            this.diagnostics.add(errorAtM3("M3004", baseToken.line(), baseToken.column(),
+                args1M3(baseToken.text())))
+            return OperandParseM3(false, memOperandM3(0, 0 as Long, open.line(), open.column()))
+        }
+        var offset: Long = 0 as Long
+        if (this.peek().kind() == "comma") {
+            this.advance()
+            if (this.peek().kind() != "hash") {
+                this.reportExpected("'#offset'", this.peek())
+                return OperandParseM3(false, memOperandM3(found.id(), 0 as Long, open.line(), open.column()))
+            }
+            this.advance()
+            val numberToken = this.peek()
+            if (numberToken.kind() != "number") {
+                this.reportExpected("a number after '#'", numberToken)
+                return OperandParseM3(false, memOperandM3(found.id(), 0 as Long, open.line(), open.column()))
+            }
+            this.advance()
+            offset = numberToken.value()
+        }
+        if (this.peek().kind() != "rbracket") {
+            this.reportExpected("']'", this.peek())
+            return OperandParseM3(false, memOperandM3(found.id(), offset, open.line(), open.column()))
+        }
+        this.advance()
+        return OperandParseM3(true, memOperandM3(found.id(), offset, open.line(), open.column()))
+    }
+
+    // {R0, R1, LR}
+    OperandParseM3 parseRegList() {
+        val open = this.advance()
+        var regs = emptyRegListM3()
+        var ok = true
+        if (this.peek().kind() != "rbrace") {
+            var more = true
+            while (more && ok) {
+                val regToken = this.peek()
+                if (regToken.kind() != "ident") {
+                    this.reportExpected("a register", regToken)
+                    ok = false
+                } else {
+                    this.advance()
+                    val found = lookupRegisterM3(regToken.text())
+                    if (!found.found()) {
+                        this.diagnostics.add(errorAtM3("M3004", regToken.line(), regToken.column(),
+                            args1M3(regToken.text())))
+                        ok = false
+                    } else {
+                        regs.add(found.id())
+                        if (this.peek().kind() == "comma") {
+                            this.advance()
+                        } else {
+                            more = false
+                        }
+                    }
+                }
+            }
+        }
+        if (!ok) {
+            return OperandParseM3(false, regListOperandM3(regs, open.line(), open.column()))
+        }
+        if (this.peek().kind() != "rbrace") {
+            this.reportExpected("'}'", this.peek())
+            return OperandParseM3(false, regListOperandM3(regs, open.line(), open.column()))
+        }
+        this.advance()
+        return OperandParseM3(true, regListOperandM3(regs, open.line(), open.column()))
+    }
+}
+
+record OperandParseM3(Bool ok, OperandM3 operand)
+
+String describeTokenM3(TokenM3 token) {
+    if (token.kind() == "eol") { return "end of line" }
+    if (token.kind() == "eof") { return "end of file" }
+    return "'" + token.text() + "'"
+}
+
+ParseResultM3 parseTokensM3(List<TokenM3> tokens) {
+    var parser = ParserM3(tokens)
+    parser.parseProgram()
+    return ParseResultM3(parser.instructions, parser.labels, parser.diagnostics)
+}
+
+record FormGuessM3(Bool ok, Int form)
+
+FormGuessM3 formFromOperandsM3(List<OperandM3> operands) {
+    if (operands.size == 0) { return FormGuessM3(true, formNoneM3()) }
+    if (operands.size == 1) {
+        val kind = operands.get(0).kind()
+        if (kind == "reg") { return FormGuessM3(true, formRegM3()) }
+        if (kind == "label") { return FormGuessM3(true, formAddrM3()) }
+        if (kind == "reglist") { return FormGuessM3(true, formRegListM3()) }
+        return FormGuessM3(false, formNoneM3())
+    }
+    if (operands.size == 2) {
+        val first = operands.get(0).kind()
+        val second = operands.get(1).kind()
+        if (first == "reg" && second == "imm") { return FormGuessM3(true, formRegImmM3()) }
+        if (first == "reg" && second == "reg") { return FormGuessM3(true, formRegRegM3()) }
+        if (first == "reg" && second == "mem") { return FormGuessM3(true, formRegMemM3()) }
+        return FormGuessM3(false, formNoneM3())
+    }
+    if (operands.size == 3) {
+        val first = operands.get(0).kind()
+        val second = operands.get(1).kind()
+        val third = operands.get(2).kind()
+        if (first == "reg" && second == "reg" && third == "reg") {
+            return FormGuessM3(true, formRegRegRegM3())
+        }
+        if (first == "reg" && second == "reg" && third == "imm") {
+            return FormGuessM3(true, formRegRegImmM3())
+        }
+        return FormGuessM3(false, formNoneM3())
+    }
+    return FormGuessM3(false, formNoneM3())
+}
