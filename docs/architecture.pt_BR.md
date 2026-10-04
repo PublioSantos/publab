@@ -35,9 +35,37 @@ O que está garantido hoje:
   o idioma de um diagnóstico é escolhido quando ele é renderizado.
 - As flags são calculadas em um lugar só, `Alu.kf`, junto com o valor.
 - A tabela de instruções vive uma vez, em `Opcodes.kf`. O assembler codifica a
-  partir dela e o engine decodifica a partir dela.
+  partir dela e o engine decodifica a partir dela (veja a regra abaixo).
 - O tamanho da palavra é um valor de configuração. Não existe classe
   `PubVM8`/`PubVM16`/`PubVM32` — só `MachineConfig`.
+
+## Regra arquitetural: um encoding, uma definição
+
+**Nunca pode existir uma tabela de opcodes no assembler e outra no engine.**
+Uma definição única — `publab/machine/Opcodes.kf` — carrega o caminho inteiro:
+
+```
+PubASM
+   ↓   Assembler   (codifica a partir da tabela)
+bytes
+   ↓
+Memory
+   ↓
+PC
+   ↓   Decoder     (decodifica a partir da mesma tabela)
+Execution
+```
+
+Tudo o que vem depois depende disso valer: a visão de memória mostra código de
+máquina real, a desmontagem da instrução atual é lida de volta da memória em
+vez de lembrada da fonte, e o debugger (fase 6) pode confiar que os bytes no
+PC significam exatamente o que o assembler escreveu. Uma segunda tabela
+deixaria as duas metades divergirem em silêncio — o tipo de defeito que
+aparece como um laboratório ensinando algo falso.
+
+Acrescentar uma instrução é acrescentar uma linha em `opcodeTable()`. Se
+alguma mudança exigir editar um número de opcode em dois lugares, a mudança
+está errada.
 
 Como a máquina é um objeto Kof comum com um `snapshot()`, ela pode ser
 acionada headless: a suíte de testes inteira faz exatamente isso, e uma CLI ou

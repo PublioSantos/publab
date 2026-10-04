@@ -77,13 +77,58 @@ Exactly which instructions touch which flags:
 | `AND`, `OR`, `XOR`, `NOT` | cleared to 0 | set | set | cleared to 0 |
 | `LOAD`, `STORE`, `JMP`, `JZ`, `JC`, `PRINT`, `HALT` | unchanged | unchanged | unchanged | unchanged |
 
+### Z and N — identical for all six arithmetic and logic instructions
+
+```
+ADD / SUB / AND / OR / XOR / NOT:
+    Z = stored result == 0
+    N = sign bit of the stored result
+```
+
+Both are computed on the **stored** result — the value after truncation to the
+word — never on the untruncated one. On PubVM-8, `255 + 1` stores `0`, so
+`Z = 1` even though the true sum is 256.
+
+### C — carry on ADD, borrow on SUB
+
+The meaning of Carry in a subtraction differs between real architectures, so
+PubVM fixes one simple, consistent definition:
+
+```
+ADD:  C = carry out
+SUB:  C = borrow
+```
+
 - **C on ADD** is set when the true sum exceeds the word mask.
-- **C on SUB** is a borrow: set when the subtrahend is larger, compared
-  unsigned.
+- **C on SUB** is set when the subtrahend is larger than the minuend, compared
+  **unsigned** — the subtraction had to borrow.
+
+```
+10 - 3 = 7          C = 0
+3 - 10 = 249        C = 1    (PubVM-8,  256 - 7)
+3 - 10 = 65529      C = 1    (PubVM-16, 65536 - 7)
+```
+
+### O — signed overflow
+
 - **O on ADD** is set when both operands have the same sign and the result's
   sign differs from it.
 - **O on SUB** is set when the operands have different signs and the result's
   sign differs from the minuend's.
+
+### C and O on the logic instructions
+
+```
+AND / OR / XOR / NOT:
+    Z = result == 0
+    N = sign bit of the result
+    C = 0
+    O = 0
+```
+
+There is no carry and no signed overflow in a bitwise operation, so both are
+**cleared** rather than left alone — a program can rely on their value after a
+logic instruction.
 
 ## Instruction set — Basic Mode
 

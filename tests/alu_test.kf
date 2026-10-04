@@ -111,3 +111,45 @@ test "encoded instruction length follows the machine" {
     assert(instructionLength(formRegReg(), 8, 16) == 3)
     assert(instructionLength(formAddr(), 8, 16) == 3, "op + 2 address bytes")
 }
+
+test "the borrow examples documented for SUB are true" {
+    // docs/pubvm.md, section "C - carry on ADD, borrow on SUB"
+    val noBorrow = aluSub(10 as Long, 3 as Long, 8)
+    assert(noBorrow.value() == 7 as Long && noBorrow.carry() == false, "10 - 3 = 7, C = 0")
+    val eight = aluSub(3 as Long, 10 as Long, 8)
+    assert(eight.value() == 249 as Long && eight.carry(), "3 - 10 = 249, C = 1 on 8 bits")
+    val sixteen = aluSub(3 as Long, 10 as Long, 16)
+    assert(sixteen.value() == 65529 as Long && sixteen.carry(), "3 - 10 = 65529, C = 1 on 16 bits")
+}
+
+test "Z and N follow one rule in all six arithmetic and logic operations" {
+    // Z = stored result == 0, N = sign bit of the stored result, always
+    // computed on the truncated value.
+    var results = listOf(aluAdd(255 as Long, 1 as Long, 8))
+    results.add(aluSub(7 as Long, 7 as Long, 8))
+    results.add(aluAnd(204 as Long, 0 as Long, 8))
+    results.add(aluOr(0 as Long, 0 as Long, 8))
+    results.add(aluXor(204 as Long, 204 as Long, 8))
+    results.add(aluNot(255 as Long, 8))
+    for (var r in results) {
+        assert(r.value() == 0 as Long)
+        assert(r.zero(), "a zero result sets Z")
+        assert(r.negative() == false, "a zero result clears N")
+    }
+
+    var negatives = listOf(aluAdd(200 as Long, 1 as Long, 8))
+    negatives.add(aluSub(0 as Long, 1 as Long, 8))
+    negatives.add(aluAnd(255 as Long, 128 as Long, 8))
+    negatives.add(aluOr(128 as Long, 1 as Long, 8))
+    negatives.add(aluXor(255 as Long, 1 as Long, 8))
+    negatives.add(aluNot(1 as Long, 8))
+    for (var r in negatives) {
+        assert(r.negative(), "the sign bit of the stored result sets N")
+        assert(r.zero() == false)
+    }
+
+    // Z and N read the STORED result, never the untruncated one.
+    val wrapped = aluAdd(255 as Long, 1 as Long, 8)
+    assert(wrapped.value() == 0 as Long && wrapped.zero(), "255 + 1 stores 0, so Z = 1")
+    assert(aluAdd(255 as Long, 1 as Long, 16).zero() == false, "256 in 16 bits is not zero")
+}

@@ -82,12 +82,58 @@ Exatamente quais instruções mexem em quais flags:
 | `AND`, `OR`, `XOR`, `NOT` | zera | define | define | zera |
 | `LOAD`, `STORE`, `JMP`, `JZ`, `JC`, `PRINT`, `HALT` | não mexe | não mexe | não mexe | não mexe |
 
+### Z e N — idênticos nas seis instruções aritméticas e lógicas
+
+```
+ADD / SUB / AND / OR / XOR / NOT:
+    Z = resultado guardado == 0
+    N = bit de sinal do resultado guardado
+```
+
+Os dois são calculados sobre o resultado **guardado** — o valor depois do
+truncamento para a palavra — nunca sobre o não truncado. Na PubVM-8,
+`255 + 1` guarda `0`, então `Z = 1` mesmo que a soma verdadeira seja 256.
+
+### C — carry no ADD, borrow no SUB
+
+O significado de Carry numa subtração varia entre arquiteturas reais, então a
+PubVM fixa uma definição simples e consistente:
+
+```
+ADD:  C = carry out
+SUB:  C = borrow
+```
+
 - **C no ADD** liga quando a soma verdadeira passa da máscara da palavra.
-- **C no SUB** é borrow: liga quando o subtraendo é maior, comparado sem sinal.
+- **C no SUB** liga quando o subtraendo é maior que o minuendo, comparado
+  **sem sinal** — a subtração precisou pedir emprestado.
+
+```
+10 - 3 = 7          C = 0
+3 - 10 = 249        C = 1    (PubVM-8,  256 - 7)
+3 - 10 = 65529      C = 1    (PubVM-16, 65536 - 7)
+```
+
+### O — overflow com sinal
+
 - **O no ADD** liga quando os dois operandos têm o mesmo sinal e o sinal do
   resultado difere dele.
 - **O no SUB** liga quando os operandos têm sinais diferentes e o sinal do
   resultado difere do sinal do minuendo.
+
+### C e O nas instruções lógicas
+
+```
+AND / OR / XOR / NOT:
+    Z = resultado == 0
+    N = bit de sinal do resultado
+    C = 0
+    O = 0
+```
+
+Não existe carry nem overflow com sinal numa operação bitwise, então os dois
+são **zerados** em vez de ficarem intocados — um programa pode confiar no
+valor deles depois de uma instrução lógica.
 
 ## Conjunto de instruções — Basic Mode
 

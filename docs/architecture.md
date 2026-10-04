@@ -35,9 +35,37 @@ What is enforced today:
   sentences: the language of a diagnostic is chosen when it is rendered.
 - Flags are computed in one place, `Alu.kf`, together with the value.
 - The instruction table lives once, in `Opcodes.kf`. The assembler encodes
-  from it and the engine decodes from it.
+  from it and the engine decodes from it (see the rule below).
 - The word size is a configuration value. There is no `PubVM8` /`PubVM16` /
   `PubVM32` class — only `MachineConfig`.
+
+## Architectural rule: one encoding, one definition
+
+**There must never be an opcode table in the assembler and another in the
+engine.** A single definition — `publab/machine/Opcodes.kf` — carries the whole
+path:
+
+```
+PubASM
+   ↓   Assembler   (encodes from the table)
+bytes
+   ↓
+Memory
+   ↓
+PC
+   ↓   Decoder     (decodes from the same table)
+Execution
+```
+
+Everything downstream depends on this holding: the memory view shows real
+machine code, the disassembly of the current instruction is read back out of
+memory rather than remembered from the source, and the debugger (phase 6) can
+trust that the bytes at PC mean exactly what the assembler wrote. A second
+table would let the two halves drift apart silently — the kind of defect that
+shows up as a laboratory teaching something false.
+
+Adding an instruction means adding one row to `opcodeTable()`. If a change ever
+requires editing an opcode number in two places, the change is wrong.
 
 Because the machine is a plain Kof object with a `snapshot()`, it can be driven
 headless: the whole test suite does exactly that, and a CLI or a UI is just
