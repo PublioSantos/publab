@@ -179,6 +179,7 @@ MIT — see [LICENSE](LICENSE).
 - [docs/architecture.md](docs/architecture.md) — layers and how they are kept apart
 - [docs/pubvm.md](docs/pubvm.md) — the machine: registers, flags, memory, encoding
 - [docs/pubasm.md](docs/pubasm.md) — the language: syntax, instructions, diagnostics
+- [docs/instruction-reference.md](docs/instruction-reference.md) — every mnemonic each assembler accepts, side by side
 - [docs/8051.md](docs/8051.md) — the 8051 educational model, real vs. simplified, item by item
 - [docs/cortex-m3.md](docs/cortex-m3.md) — the Cortex-M3 educational model, real vs. simplified
 - [docs/architecture-comparison.md](docs/architecture-comparison.md) — the tabs and the comparison view

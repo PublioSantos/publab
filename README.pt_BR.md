@@ -182,6 +182,7 @@ MIT — veja [LICENSE](LICENSE).
 - [docs/architecture.pt_BR.md](docs/architecture.pt_BR.md) — camadas e como são mantidas separadas
 - [docs/pubvm.pt_BR.md](docs/pubvm.pt_BR.md) — a máquina: registradores, flags, memória, encoding
 - [docs/pubasm.pt_BR.md](docs/pubasm.pt_BR.md) — a linguagem: sintaxe, instruções, diagnostics
+- [docs/instruction-reference.pt_BR.md](docs/instruction-reference.pt_BR.md) — todos os mnemônicos que cada montador aceita, lado a lado
 - [docs/8051.pt_BR.md](docs/8051.pt_BR.md) — o modelo educacional do 8051, real vs. simplificado, item por item
 - [docs/cortex-m3.pt_BR.md](docs/cortex-m3.pt_BR.md) — o modelo educacional do Cortex-M3, real vs. simplificado
 - [docs/architecture-comparison.pt_BR.md](docs/architecture-comparison.pt_BR.md) — as abas e a visão de comparação
