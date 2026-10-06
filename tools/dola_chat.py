@@ -108,10 +108,13 @@ async def enviar_pergunta(page, pergunta: str) -> str:
 
 async def iniciar_sessao(playwright, headless=True):
     """Inicia o navegador e abre o dola.com."""
-    browser = await playwright.chromium.launch(
-        headless=headless,
-        executable_path="/opt/pw-browsers/chromium",
-    )
+    # Em ambiente cloud (CCR), use: executable_path="/opt/pw-browsers/chromium"
+    # Localmente, remova o executable_path e rode: playwright install chromium
+    import os
+    kwargs = {"headless": headless}
+    if os.path.exists("/opt/pw-browsers/chromium"):
+        kwargs["executable_path"] = "/opt/pw-browsers/chromium"
+    browser = await playwright.chromium.launch(**kwargs)
     context = await browser.new_context(
         viewport={"width": 1280, "height": 800},
         locale="pt-BR",
