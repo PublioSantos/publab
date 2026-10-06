@@ -122,7 +122,7 @@ async def iniciar_sessao(playwright, headless=True):
     page = await context.new_page()
 
     print(f"Abrindo {DOLA_URL} ...")
-    await page.goto(DOLA_URL, wait_until="networkidle", timeout=30000)
+    await page.goto(DOLA_URL, wait_until="domcontentloaded", timeout=60000)
 
     # Aguarda a interface carregar
     await page.wait_for_timeout(2000)
