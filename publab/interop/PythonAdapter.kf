@@ -1,0 +1,25 @@
+package publab.interop
+
+import publab.interop
+
+// Python adapter — not yet implemented.
+//
+// Full implementation requires process execution support (kof.sys.exec or
+// equivalent) so that the Kof runtime can launch a Python interpreter,
+// pass the code snippet and entrada values, and capture stdout.
+//
+// Planned approach (once kof.sys.exec is available):
+//   1. Serialize entrada as Python variable assignments prepended to codigo.
+//   2. Execute via: kof.sys.exec("python3 -c <script>")
+//   3. Parse stdout according to formato ("text", "json", etc.).
+
+InteropResult pythonRun(
+    String codigo,
+    List<publab.interop.InteropEntry> entrada,
+    String formato
+) {
+    return interopErr(
+        "Python adapter is not yet implemented. "
+        + "Requires process execution support in the Kof runtime."
+    )
+}

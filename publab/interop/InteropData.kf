@@ -1,0 +1,47 @@
+package publab.interop
+
+// Core types and utilities shared by all adapters.
+
+// A single named value passed to an external system via entrada.
+// Both key and value are Strings; adapters parse values as needed.
+record InteropEntry(String key, String value)
+
+// The result of any interop_bridge() call.
+// Errors from the external system are encoded here rather than thrown
+// so callers do not need try/catch at every call site.
+record InteropResult(Bool ok, String output, String error, String format)
+
+// --- constructors -----------------------------------------------------------
+
+InteropResult interopOk(String output, String format) {
+    return InteropResult(true, output, "", format)
+}
+
+InteropResult interopErr(String error) {
+    return InteropResult(false, "", error, "text")
+}
+
+// Empty entrada list — use when no input values are needed.
+// The full qualification on the return type is intentional (SEM010 workaround).
+List<publab.interop.InteropEntry> noInput() {
+    return listOf()
+}
+
+// --- utilities --------------------------------------------------------------
+
+// Look up a key in the entrada list; returns "" when the key is absent.
+String interopGet(List<publab.interop.InteropEntry> entrada, String key) {
+    var i = 0
+    while (i < entrada.size) {
+        val e = entrada.get(i)
+        if (e.key == key) { return e.value }
+        i = i + 1
+    }
+    return ""
+}
+
+// Resolve "auto" to defaultFormat; use any other value as-is.
+String resolveFormat(String formato, String defaultFormat) {
+    if (formato == "auto") { return defaultFormat }
+    return formato
+}

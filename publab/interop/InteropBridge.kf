@@ -1,0 +1,56 @@
+package publab.interop
+
+import publab.interop
+
+// The single, stable entry point for all external integrations.
+//
+//   destino   target system: "shell" | "python" | "http" |
+//                             "process" | "native" | "kof"
+//   codigo    command, code snippet, or URL to execute
+//   entrada   named input values passed to the external code
+//   formato   output format hint: "auto" | "text" | "json" | "table"
+//
+// Returns an InteropResult. External errors are encoded in the result
+// rather than thrown — callers do not need try/catch at every call site.
+// Unexpected errors thrown by an adapter are caught here and returned as
+// InteropResult(ok=false, ...) so the Kof program always gets a value back.
+//
+// Adding a new destination means:
+//   1. Create a new adapter file in this package.
+//   2. Add one if-branch below.
+//   3. No changes to this signature, to callers, or to other adapters.
+InteropResult interop_bridge(
+    String destino,
+    String codigo,
+    List<publab.interop.InteropEntry> entrada,
+    String formato
+) {
+    try {
+        if (destino == "shell") {
+            return shellRun(codigo, entrada, formato)
+        }
+        if (destino == "python") {
+            return pythonRun(codigo, entrada, formato)
+        }
+        if (destino == "http") {
+            return httpRequest(codigo, entrada, formato)
+        }
+        if (destino == "process") {
+            return interopErr("Adapter 'process' is not yet implemented.")
+        }
+        if (destino == "native") {
+            return interopErr("Adapter 'native' is not yet implemented.")
+        }
+        if (destino == "kof") {
+            return interopErr("Adapter 'kof' is not yet implemented.")
+        }
+        return interopErr("Unknown destination: '" + destino + "'.")
+    } catch (String e) {
+        return interopErr("Interop bridge error: " + e)
+    }
+}
+
+// Convenience variant for calls with no input values.
+InteropResult interop(String destino, String codigo, String formato) {
+    return interop_bridge(destino, codigo, noInput(), formato)
+}

@@ -1,0 +1,84 @@
+package publab.interop
+
+import publab.interop
+
+// Shell adapter — proof of concept.
+//
+// Built-in commands are handled in pure Kof and work on all targets.
+// Arbitrary shell execution (any command beyond the built-ins below)
+// requires runtime process support (kof.sys.exec or equivalent), which
+// is not part of the current implementation and returns an explicit error.
+//
+// Built-in commands
+//   echo            — empty line
+//   echo <text>     — print text as-is
+//   echo $key       — expand $key from entrada values before printing
+
+InteropResult shellRun(
+    String codigo,
+    List<publab.interop.InteropEntry> entrada,
+    String formato
+) {
+    val cmd = codigo.trim()
+    val fmt = resolveFormat(formato, "text")
+
+    if (cmd == "echo") {
+        return interopOk("", fmt)
+    }
+
+    if (cmd.indexOf("echo ") == 0) {
+        val raw = cmd.substring(5)
+        val text = shellExpand(raw, entrada)
+        return interopOk(text, fmt)
+    }
+
+    return interopErr(
+        "Shell: command not built-in: '" + cmd + "'. "
+        + "Arbitrary execution requires runtime support."
+    )
+}
+
+// Replace every $key reference in text with the matching entry value.
+// Iterates the full entrada list once per entry: simple but correct.
+String shellExpand(String text, List<publab.interop.InteropEntry> entrada) {
+    var result = text
+    var i = 0
+    while (i < entrada.size) {
+        val e = entrada.get(i)
+        result = shellReplaceAll(result, "$" + e.key, e.value)
+        i = i + 1
+    }
+    return result
+}
+
+// Replace all occurrences of old in s with replacement.
+// Uses indexOf + substring(from) — only confirmed-available stdlib.
+String shellReplaceAll(String s, String old, String replacement) {
+    var result = ""
+    var remaining = s
+    val oldLen = old.length
+    if (oldLen == 0) { return s }
+    var searching = true
+    while (searching) {
+        val idx = remaining.indexOf(old)
+        if (idx < 0) {
+            result = result + remaining
+            searching = false
+        } else {
+            result = result + shellSubstringBefore(remaining, idx) + replacement
+            remaining = remaining.substring(idx + oldLen)
+        }
+    }
+    return result
+}
+
+// Return the first n characters of s using repeated charAt.
+String shellSubstringBefore(String s, Int n) {
+    var out = ""
+    var i = 0
+    while (i < n) {
+        out = out + s.charAt(i)
+        i = i + 1
+    }
+    return out
+}

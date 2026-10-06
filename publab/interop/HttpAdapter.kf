@@ -1,0 +1,27 @@
+package publab.interop
+
+import publab.interop
+
+// HTTP adapter — not yet implemented.
+//
+// Full implementation requires an HTTP client in kof.io (or equivalent).
+// The architecture is in place: add the client call to httpRequest() and
+// the rest of the bridge needs no changes.
+//
+// Planned syntax for codigo:
+//   "GET https://api.exemplo.com/data"
+//   "POST https://api.exemplo.com/items"
+//
+// entrada keys would carry the request body or query parameters;
+// formato would drive response decoding ("json", "text", etc.).
+
+InteropResult httpRequest(
+    String codigo,
+    List<publab.interop.InteropEntry> entrada,
+    String formato
+) {
+    return interopErr(
+        "HTTP adapter is not yet implemented. "
+        + "Requires an HTTP client in the Kof runtime."
+    )
+}

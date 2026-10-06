@@ -1,0 +1,128 @@
+package tests
+
+import publab.interop
+
+// --- dispatch ---------------------------------------------------------------
+
+test "unknown destination returns an error result" {
+    val r = interop("nonexistent", "", "auto")
+    assert(r.ok == false)
+    assert(r.error.indexOf("nonexistent") >= 0)
+}
+
+test "unimplemented adapter returns an error result" {
+    val r = interop("process", "", "auto")
+    assert(r.ok == false)
+}
+
+test "python adapter returns not-implemented error" {
+    val r = interop("python", "print(1)", "auto")
+    assert(r.ok == false)
+    assert(r.error.length > 0)
+}
+
+test "http adapter returns not-implemented error" {
+    val r = interop("http", "GET https://example.com", "auto")
+    assert(r.ok == false)
+    assert(r.error.length > 0)
+}
+
+// --- shell adapter ----------------------------------------------------------
+
+test "echo with no argument returns empty output" {
+    val r = interop("shell", "echo", "auto")
+    assert(r.ok == true)
+    assert(r.output == "")
+}
+
+test "echo returns its argument" {
+    val r = interop("shell", "echo hello", "text")
+    assert(r.ok == true)
+    assert(r.output == "hello")
+}
+
+test "echo with leading whitespace in command is trimmed" {
+    val r = interop("shell", "  echo hello  ", "text")
+    assert(r.ok == true)
+    assert(r.output == "hello  ", "trailing space in argument is preserved")
+}
+
+test "echo with multi-word argument preserves spaces" {
+    val r = interop("shell", "echo hello world", "text")
+    assert(r.ok == true)
+    assert(r.output == "hello world")
+}
+
+test "shell expands $key references from entrada" {
+    val entrada = listOf(
+        InteropEntry("name", "Kof")
+    )
+    val r = interop_bridge("shell", "echo hello $name", entrada, "text")
+    assert(r.ok == true)
+    assert(r.output == "hello Kof")
+}
+
+test "shell expands multiple entrada values" {
+    val entrada = listOf(
+        InteropEntry("a", "10"),
+        InteropEntry("b", "20")
+    )
+    val r = interop_bridge("shell", "echo $a plus $b", entrada, "text")
+    assert(r.ok == true)
+    assert(r.output == "10 plus 20")
+}
+
+test "shell $key with no matching entrada is left as-is" {
+    val r = interop_bridge("shell", "echo $missing", noInput(), "text")
+    assert(r.ok == true)
+    assert(r.output == "$missing")
+}
+
+test "unsupported shell command returns an error" {
+    val r = interop("shell", "ls -la", "auto")
+    assert(r.ok == false)
+    assert(r.error.indexOf("ls -la") >= 0)
+}
+
+// --- format resolution ------------------------------------------------------
+
+test "format auto resolves to text for shell output" {
+    val r = interop("shell", "echo hi", "auto")
+    assert(r.ok == true)
+    assert(r.format == "text")
+}
+
+test "explicit format is preserved in the result" {
+    val r = interop("shell", "echo hi", "text")
+    assert(r.format == "text")
+}
+
+// --- interopGet utility -----------------------------------------------------
+
+test "interopGet returns the value for a known key" {
+    val entrada = listOf(
+        InteropEntry("x", "42")
+    )
+    assert(interopGet(entrada, "x") == "42")
+}
+
+test "interopGet returns empty string for an unknown key" {
+    assert(interopGet(noInput(), "missing") == "")
+}
+
+// --- interopOk / interopErr -------------------------------------------------
+
+test "interopOk sets ok=true and clears error" {
+    val r = interopOk("result", "json")
+    assert(r.ok == true)
+    assert(r.output == "result")
+    assert(r.error == "")
+    assert(r.format == "json")
+}
+
+test "interopErr sets ok=false and clears output" {
+    val r = interopErr("something went wrong")
+    assert(r.ok == false)
+    assert(r.output == "")
+    assert(r.error == "something went wrong")
+}
